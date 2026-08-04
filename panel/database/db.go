@@ -42,6 +42,8 @@ func initModels() error {
 		&xray.ClientTraffic{},
 		&model.HistoryOfSeeders{},
 		&model.CustomGeoResource{},
+		&model.Node{},
+		&model.InboundNode{},
 	}
 	for _, model := range models {
 		if err := db.AutoMigrate(model); err != nil {
@@ -248,6 +250,70 @@ func migrateInboundAccess() {
 	}
 }
 
+// seedLocalNode creates the row representing this host and places every inbound
+// that is not yet placed anywhere onto it.
+//
+// This is what makes multi-node a no-op upgrade: an operator who never adds a
+// node ends up with one local node holding exactly the inbounds they already
+// had, and every path behaves as it did before.
+//
+// It is deliberately NOT registered in history_of_seeders, and runs on every
+// start instead. The HistoryOfSeeders mechanism exists for one-shot data
+// rewrites that would be wrong to repeat (hashing already-hashed passwords);
+// this is a reconciliation, and it is idempotent by construction -- it skips any
+// inbound that already has a placement, so re-running cannot duplicate one. Running
+// every start is the point: an inbound created while this code was absent, or a
+// local row lost to a hand-edited database, is repaired on the next boot rather
+// than leaving an inbound that belongs to no node and is therefore served by
+// nothing.
+func seedLocalNode() error {
+	var local model.Node
+	err := db.Where("is_local = ?", true).First(&local).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		local = model.Node{
+			Name:    model.LocalNodeName,
+			IsLocal: true,
+			Enable:  true,
+			Status:  model.NodeOnline, // the panel is by definition reachable from itself
+		}
+		if err := db.Create(&local).Error; err != nil {
+			return err
+		}
+	} else if err != nil {
+		return err
+	}
+
+	var inbounds []model.Inbound
+	if err := db.Select("id").Find(&inbounds).Error; err != nil {
+		return err
+	}
+
+	placed := 0
+	for _, in := range inbounds {
+		var count int64
+		if err := db.Model(&model.InboundNode{}).
+			Where("inbound_id = ?", in.Id).Count(&count).Error; err != nil {
+			return err
+		}
+		if count > 0 {
+			// Already placed somewhere. Never second-guess that: the operator may
+			// have moved this inbound to a remote node on purpose, and "repairing"
+			// it back onto the local host would silently start serving it here too.
+			continue
+		}
+		if err := db.Create(&model.InboundNode{
+			InboundId: in.Id, NodeId: local.Id, Enable: true,
+		}).Error; err != nil {
+			return err
+		}
+		placed++
+	}
+	if placed > 0 {
+		log.Printf("node migration: placed %d existing inbound(s) on the local node", placed)
+	}
+	return nil
+}
+
 // runSeeders migrates user passwords to bcrypt and records seeder execution to prevent re-running.
 func runSeeders(isUsersEmpty bool) error {
 	empty, err := isTableEmpty("history_of_seeders")
@@ -420,6 +486,9 @@ func InitDB(dbPath string) error {
 	migrateGlobalTwoFactor()
 	migrateInboundOwners()
 	migrateInboundAccess()
+	if err := seedLocalNode(); err != nil {
+		return err
+	}
 	return runSeeders(isUsersEmpty)
 }
 
