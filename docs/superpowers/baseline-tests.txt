@@ -16,61 +16,7 @@ ok  	github.com/mhsanaei/3x-ui/v2/sub	(cached)
 ?   	github.com/mhsanaei/3x-ui/v2/util/reflect_util	[no test files]
 ?   	github.com/mhsanaei/3x-ui/v2/util/sys	[no test files]
 ok  	github.com/mhsanaei/3x-ui/v2/web	(cached)
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
---- FAIL: TestDenyShapeMatchesRequestKind (0.00s)
-    permission_test.go:111: page navigation denial = 200; want 307 redirect
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-failed to create log folder /var/log/vpn-ui: mkdir /var/log/vpn-ui: permission denied
-FAIL
-FAIL	github.com/mhsanaei/3x-ui/v2/web/controller	20.598s
+ok  	github.com/mhsanaei/3x-ui/v2/web/controller	(cached)
 ?   	github.com/mhsanaei/3x-ui/v2/web/entity	[no test files]
 ?   	github.com/mhsanaei/3x-ui/v2/web/global	[no test files]
 ok  	github.com/mhsanaei/3x-ui/v2/web/job	(cached)
@@ -82,4 +28,3 @@ ok  	github.com/mhsanaei/3x-ui/v2/web/service/rbridge	(cached)
 ?   	github.com/mhsanaei/3x-ui/v2/web/session	[no test files]
 ?   	github.com/mhsanaei/3x-ui/v2/web/websocket	[no test files]
 ok  	github.com/mhsanaei/3x-ui/v2/xray	(cached)
-FAIL
