@@ -155,22 +155,36 @@ func TestRunnerConformanceProvisionCloses(t *testing.T) {
 	}
 }
 
-// Errors must PROPAGATE across the transport, not be swallowed into a zero
-// value. Apply and Collect are not implemented yet, so both runners must report
-// that -- the remote one included. A transport that turned a failure into an
-// empty CollectResult would read as "this node moved no traffic" and bill
-// nobody, silently, forever.
+// Errors must PROPAGATE across the transport rather than being swallowed into a
+// zero value. Apply is not implemented for a non-empty state yet, so both
+// runners must say so -- the remote one included. A transport that turned a
+// failure into an empty result would read as success and, for Collect, as "this
+// node moved no traffic", billing nobody, silently, forever.
 func TestRunnerConformanceErrorsPropagate(t *testing.T) {
 	for name, r := range conformanceRunners(t) {
-		if _, err := r.Collect(context.Background()); err == nil {
-			t.Errorf("%s: Collect is unimplemented and must report an error, not an empty result", name)
-		}
 		_, err := r.Apply(context.Background(), node.DesiredState{
 			Generation: 1,
 			Inbounds:   []node.NodeInbound{{InboundId: 1, Tag: "x", Protocol: "wg-c", Port: 51820, Enable: true}},
 		})
 		if err == nil {
 			t.Errorf("%s: Apply is unimplemented for a non-empty state and must report an error", name)
+		}
+	}
+}
+
+// Collect must behave identically on both sides. On a host with nothing
+// configured it returns an empty result and no error, and the remote path must
+// not turn that into a failure -- nor a failure into an empty result, which is
+// the direction that silently bills nobody.
+func TestRunnerConformanceCollectOnIdleHost(t *testing.T) {
+	for name, r := range conformanceRunners(t) {
+		res, err := r.Collect(context.Background())
+		if err != nil {
+			t.Errorf("%s: Collect on an idle host must not error: %v", name, err)
+			continue
+		}
+		if len(res.Traffics) != 0 || len(res.ClientTraffics) != 0 {
+			t.Errorf("%s: idle host reported traffic: %+v", name, res)
 		}
 	}
 }

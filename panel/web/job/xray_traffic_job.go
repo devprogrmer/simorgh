@@ -199,6 +199,22 @@ func (j *XrayTrafficJob) Run() {
 	// its User Limit. The server owns every net.Conn, so this is an in-process close.
 	j.sshService.KillDisabledSessions()
 
+	// Pull the same tick from every REMOTE node and merge it into the local
+	// figures before accounting runs.
+	//
+	// The local half above is left exactly as it was rather than being routed
+	// through LocalRunner.Collect as well. It is proven billing code with
+	// several non-obvious de-duplication decisions baked into it, and moving it
+	// in the same change that introduces remote collection would make any
+	// billing regression impossible to attribute to one or the other.
+	//
+	// Merging HERE, before AddTraffic, is what makes one quota hold across a
+	// fleet: the database is the only place that knows an account's total across
+	// every node, so a 10GB account on three nodes gets 10GB, not 10 each.
+	remoteTraffics, remoteClients := j.collectFromNodes()
+	traffics = append(traffics, remoteTraffics...)
+	clientTraffics = append(clientTraffics, remoteClients...)
+
 	// Skip DB update if no traffic to process
 	if len(traffics) == 0 && len(clientTraffics) == 0 {
 		return
@@ -238,6 +254,16 @@ func (j *XrayTrafficJob) Run() {
 	if len(ovpnDisabledEmails) > 0 {
 		j.openvpnService.DisableClients(ovpnDisabledEmails)
 	}
+	// Push the same verdict to the remote nodes. AddTraffic has just committed,
+	// so this is the first moment the crossing is visible, and sending the whole
+	// set (not a delta) is what lets a node that missed a tick self-correct on
+	// the next one instead of serving an over-quota account until it reconnects.
+	//
+	// The union of the three protocol-specific lists is used rather than one of
+	// them: a node may be serving that account on a protocol this master's own
+	// host does not run at all.
+	j.enforceOnNodes(unionEmails(l2tpDisabledEmails, pptpDisabledEmails, ovpnDisabledEmails))
+
 	err, needRestart1 := j.outboundService.AddTraffic(traffics, clientTraffics)
 	if err != nil {
 		logger.Warning("add outbound traffic failed:", err)

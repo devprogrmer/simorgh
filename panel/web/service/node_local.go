@@ -8,6 +8,7 @@ import (
 
 	"github.com/mhsanaei/3x-ui/v2/config"
 	"github.com/mhsanaei/3x-ui/v2/node"
+	"github.com/mhsanaei/3x-ui/v2/web/service/rbridge"
 )
 
 // LocalRunner drives the machine the panel is running on.
@@ -21,6 +22,25 @@ import (
 // abstraction changed nothing.
 type LocalRunner struct {
 	coreService CoreService
+
+	// The per-protocol services this runner collects from and enforces on. They
+	// are zero-value-usable, so only the RADIUS wiring needs a setter -- see
+	// SetRadius in node_collect.go for why forgetting it fails silently.
+	xrayService    XrayService
+	l2tpService    L2tpService
+	pptpService    PptpService
+	openvpnService OpenVpnService
+	ocservService  OcservService
+	sstpService    SstpService
+	ikev2Service   Ikev2Service
+	wgcService     WgcService
+	awgService     AwgService
+	greService     GreService
+	mtprotoService MtprotoService
+	sshService     SshService
+	nftService     NftService
+	radiusService  *RadiusService
+	sweeper        *rbridge.Sweeper
 
 	// mu guards lastHash. Apply can be called concurrently by the tick loop and
 	// by an operator action in the same process.
@@ -172,17 +192,5 @@ func (r *LocalRunner) writeCerts(certs map[string][]byte) error {
 	return errNotYetImplemented
 }
 
-// Collect and Enforce are filled in by the traffic-split task, which moves the
-// local halves of XrayTrafficJob.Run behind them.
-func (r *LocalRunner) Collect(ctx context.Context) (node.CollectResult, error) {
-	return node.CollectResult{}, errNotYetImplemented
-}
-
-// Enforce with an empty set is the common case and must stay a no-op, so the
-// emptiness check comes before the unimplemented return rather than after it.
-func (r *LocalRunner) Enforce(ctx context.Context, disabled node.DisabledSet) error {
-	if len(disabled.Emails) == 0 {
-		return nil
-	}
-	return errNotYetImplemented
-}
+// Collect and Enforce live in node_collect.go, beside the explanation of why
+// the traffic tick splits where it does.
