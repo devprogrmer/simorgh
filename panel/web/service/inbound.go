@@ -602,6 +602,40 @@ func duplicateEmailError(email string) error {
 // getAllEmailsExcludingInbound lists every client email in the DB except one
 // inbound's. An ignoreInboundId of 0 excludes nothing: inbound ids are AUTOINCREMENT
 // and start at 1, so no row can hold 0.
+// emailOwner is an email together with the subscription it belongs to.
+//
+// The pair is what distinguishes the two things a repeated email can mean: the
+// SAME customer reachable on another protocol (same subId — legitimate, and the
+// whole point of a multi-protocol subscription), or two different customers
+// colliding on an identity (different subId — still refused, because quota,
+// expiry and the speed limit are all keyed on email and the two would silently
+// share them).
+type emailOwner struct {
+	Email string
+	SubId string
+}
+
+// getAllEmailOwnersExcludingInbound is getAllEmailsExcludingInbound with the
+// owning subscription carried alongside, so a duplicate can be judged rather
+// than merely detected.
+func (s *InboundService) getAllEmailOwnersExcludingInbound(ignoreInboundId int) ([]emailOwner, error) {
+	db := database.GetDB()
+	var owners []emailOwner
+	// COALESCE for the same reason as below: a client with no `email` or no
+	// `subId` key yields SQL NULL, and scanning NULL into a string fails.
+	err := db.Raw(`
+		SELECT COALESCE(JSON_EXTRACT(client.value, '$.email'), '') AS email,
+		       COALESCE(JSON_EXTRACT(client.value, '$.subId'), '') AS sub_id
+		FROM inbounds,
+			JSON_EACH(JSON_EXTRACT(inbounds.settings, '$.clients')) AS client
+		WHERE inbounds.id != ?
+		`, ignoreInboundId).Scan(&owners).Error
+	if err != nil {
+		return nil, err
+	}
+	return owners, nil
+}
+
 func (s *InboundService) getAllEmailsExcludingInbound(ignoreInboundId int) ([]string, error) {
 	db := database.GetDB()
 	var emails []string
@@ -687,23 +721,60 @@ func (s *InboundService) checkPPPUsernamesForDuplicates(protocol string, clients
 // KEEPING would collide with its own persisted row. Callers whose row is not yet
 // persisted (AddInbound) or whose write is additive (AddInboundClient) pass 0 and
 // get a plain global check.
+// An email repeated under the SAME subId is NOT a duplicate. That is one
+// customer reachable on several protocols, sharing one quota — a 20 GB account
+// that can spend those 20 GB across WireGuard, OpenVPN, L2TP and everything else
+// it was given, rather than 20 GB on each. It works because quota, expiry and
+// the speed limit are all keyed on email, and client_traffics holds one row per
+// email that AddTraffic sums into.
+//
+// A repeat under a DIFFERENT subId is still refused: those are two customers,
+// and letting them share an email would silently pool their quotas.
+//
+// Within one batch the same rule applies, so a single edit can add the same
+// account to several protocols at once.
 func (s *InboundService) checkEmailsExistExcludingInbound(clients []model.Client, ignoreInboundId int) (string, error) {
-	allEmails, err := s.getAllEmailsExcludingInbound(ignoreInboundId)
+	existing, err := s.getAllEmailOwnersExcludingInbound(ignoreInboundId)
 	if err != nil {
 		return "", err
 	}
-	var emails []string
+	owner := make(map[string]string, len(existing)) // lowercased email -> subId
+	for _, e := range existing {
+		email := strings.ToLower(strings.TrimSpace(e.Email))
+		if email == "" {
+			continue
+		}
+		// First writer wins the record. A pre-existing pair that already shares an
+		// email under two different subIds is data this check cannot repair, and
+		// overwriting here would just make which one it reports arbitrary.
+		if _, seen := owner[email]; !seen {
+			owner[email] = e.SubId
+		}
+	}
+
 	for _, client := range clients {
 		email := strings.TrimSpace(client.Email)
 		if email == "" {
 			continue
 		}
-		if containsEmail(emails, email) || containsEmail(allEmails, email) {
+		key := strings.ToLower(email)
+		if prev, seen := owner[key]; seen && !sameSubscription(prev, client.SubID) {
 			return email, nil
 		}
-		emails = append(emails, email)
+		owner[key] = client.SubID
 	}
 	return "", nil
+}
+
+// sameSubscription reports whether two clients belong to one subscription.
+//
+// An empty subId on either side is NOT treated as a match. Clients created
+// without one are the historic default, so treating "" as a wildcard would let
+// any two of them share an email and pool their quotas — the exact failure this
+// check exists to prevent, reintroduced for the most common case.
+func sameSubscription(a, b string) bool {
+	a, b = strings.TrimSpace(a), strings.TrimSpace(b)
+	return a != "" && a == b
 }
 
 func (s *InboundService) checkEmailsExistForClients(clients []model.Client) (string, error) {
