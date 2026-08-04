@@ -44,6 +44,7 @@ func initModels() error {
 		&model.CustomGeoResource{},
 		&model.Node{},
 		&model.InboundNode{},
+		&model.ClientDevice{},
 	}
 	for _, model := range models {
 		if err := db.AutoMigrate(model); err != nil {
