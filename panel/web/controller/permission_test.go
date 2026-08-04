@@ -45,6 +45,18 @@ func runGuarded(t *testing.T, user *model.User, guard gin.HandlerFunc, ajax bool
 	req := httptest.NewRequest(http.MethodGet, "/guarded", nil)
 	if ajax {
 		req.Header.Set("X-Requested-With", "XMLHttpRequest")
+	} else {
+		// A page navigation is what a BROWSER sends, and wantsHTML (permission.go)
+		// decides on Accept, not on the absence of the ajax header. Omitting Accept
+		// here modelled neither case: deny() correctly took its non-HTML branch and
+		// answered JSON, so the "page navigation redirects" assertion measured a
+		// request no browser makes.
+		//
+		// deny() moved off keying purely on X-Requested-With deliberately — a real
+		// request that missed the header got a 307 with an empty body, which the
+		// frontend surfaced as "No response data" instead of the reason. This helper
+		// had not followed.
+		req.Header.Set("Accept", "text/html,application/xhtml+xml")
 	}
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -106,7 +118,11 @@ func TestRequireSuperAdmin(t *testing.T) {
 // A page navigation redirects; an XHR gets a JSON status. Denying a page with a raw
 // 403 would leave the browser on a blank screen.
 func TestDenyShapeMatchesRequestKind(t *testing.T) {
-	limited := &model.User{Id: 2, Enable: true}
+	// Holds a page bit (so landingPath has somewhere to send them) but not the one
+	// under guard. Both halves matter: with NO bits at all landingPath answers ""
+	// and deny() deliberately serves a plain 403 instead of redirecting, so a
+	// permissionless user can never exercise the redirect this test is named for.
+	limited := &model.User{Id: 2, Enable: true, Permissions: model.PermXraySettings}
 	if got, _ := runGuarded(t, limited, requirePerm(model.PermAccessInbounds), false); got != http.StatusTemporaryRedirect {
 		t.Errorf("page navigation denial = %d; want 307 redirect", got)
 	}
@@ -118,6 +134,22 @@ func TestDenyShapeMatchesRequestKind(t *testing.T) {
 	}
 	if !strings.Contains(body, `"success":false`) || !strings.Contains(body, "forbidden") {
 		t.Errorf("xhr denial must carry success:false and a reason; got %s", body)
+	}
+}
+
+// The other half of deny()'s page branch, which had no coverage: an admin holding
+// only action bits (createClient, say) can open no page at all, so there is nowhere
+// to redirect them. Every candidate target would deny them in turn and the browser
+// would spin through the chain until it gave up, so this case must terminate in a
+// plain 403 rather than a redirect.
+func TestPageDenialWithNoLandingPageDoesNotRedirect(t *testing.T) {
+	noPages := &model.User{Id: 4, Enable: true}
+	got, body := runGuarded(t, noPages, requirePerm(model.PermAccessInbounds), false)
+	if got != http.StatusForbidden {
+		t.Errorf("page denial with no reachable page = %d; want a plain 403, never a redirect", got)
+	}
+	if body == "" {
+		t.Error("the 403 page must carry a reason; an empty body is a blank screen")
 	}
 }
 
