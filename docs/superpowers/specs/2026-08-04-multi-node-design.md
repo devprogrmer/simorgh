@@ -94,8 +94,25 @@ and this design must leave it able to answer "which node is this link for".
 ### 3.1 One binary, two modes
 
 The panel binary gains a node mode. Invoked as `simorgh-panel node`, it starts an
-mTLS HTTPS server exposing the node API and does not start the web UI, the
-database, or the job scheduler.
+mTLS HTTPS server exposing the node API and does not start the web UI or the job
+scheduler.
+
+**Correction, found during implementation.** An earlier draft of this section
+said a node runs no database. That was wrong, and the code disproves it: every
+protocol service reads its inbounds through `database.GetDB()` —
+`wgc.go`, `openvpn.go`, `l2tp.go`, `gre.go`, `mtproto.go`, `ssh.go` and
+`ikev2.go` all do, and `CoreService.GetCoresStatus` panics without one. A
+database-free node would therefore require rewriting the ~13,000 lines of
+protocol drivers, which is precisely what §3.1 exists to avoid.
+
+A node runs the same schema, but as a **materialisation of the desired state it
+was pushed, not a source of truth**. `Apply` writes the inbounds it receives into
+the node's local database and the existing services then read them exactly as
+they do on the master. What a node's database does *not* hold is anything the
+master owns: no reseller ledger, no admin users, no traffic history of record,
+and no account data beyond the credentials its own protocols must authenticate.
+The security claim in §3.8 is therefore narrower than "a node stores nothing",
+and is stated that way there.
 
 Rejected alternative: a separate slim agent binary. It would have to either
 duplicate ~13,000 lines of protocol driver logic — which guarantees the master
@@ -284,8 +301,11 @@ no change.
 ### 3.8 Security boundary
 
 - Node API: mTLS only, master CA only. No password auth, no bearer token.
-- The node holds no database and no client credentials beyond what its running
-  protocols require.
+- A node holds no client credentials beyond what its running protocols must
+  authenticate, and none of what the master owns: no reseller ledger, no admin
+  users, no traffic history of record. It does run a database (see the correction
+  in §3.1), so the honest claim is "a compromised node exposes the accounts on
+  that node", not "a compromised node exposes nothing".
 - SSH credentials exist only in memory during bootstrap.
 - **Private key material at rest: no better than the panel's existing standard,
   and this is stated rather than glossed.** The panel has no at-rest encryption
