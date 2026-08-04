@@ -1,0 +1,4 @@
+*.log
+/core/simorgh-core
+core/go.sum
+.DS_Store
