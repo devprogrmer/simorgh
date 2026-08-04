@@ -173,10 +173,18 @@ what Docker Hub's own `golang:alpine` base image needs.
   → customer creation pipeline was tested through the real HTTP+SSH code
   path for both WireGuard and OpenVPN, including the separate-file and
   combined-failover output modes.
-- **`panel/`** (vpn-ui fork): **not built or run** in this environment —
-  missing network access to one dependency, and an older Go toolchain than
-  it requires. Only a plain-text rebrand edit was made. Build and
-  smoke-test it yourself before deploying.
+- **`panel/`** (vpn-ui fork): **now builds and its test suite passes** — 15
+  packages, no failures, on Go 1.26.5. It did not build at all before: two
+  `.gitkeep` placeholders the `go:embed` directives depend on were missing, so
+  nothing in the panel compiled. That, and a stale test that was the suite's
+  only failure, are fixed.
+- **Multi-node** (`panel/node/`, `docs/NODES.md`): the panel can now run its
+  protocols on remote servers. Hashing, the certificate authority, the
+  local/remote conformance suite, replay refusal, cross-node quota, relay
+  de-duplication and the route permissions are all covered by tests that were
+  run. **Not verified**: the real SSH bootstrap against a real machine, remote
+  provisioning end to end, and anything needing a browser. See
+  `docs/NODES.md` for the full breakdown.
 
 Where something couldn't be verified, that's stated plainly in the
 relevant doc rather than assumed to work — check `docs/DEPLOYMENT.md` and
@@ -190,6 +198,9 @@ each component's own README for the specifics.
 - `docs/DEPLOYMENT.md` — prerequisites, server optimization, real
   troubleshooting tables for WireGuard and OpenVPN, and the reasoning
   behind what was and wasn't built for multi-node/reseller support.
+- `docs/NODES.md` — running the panel's protocols on remote servers: adding a
+  node, automatic prerequisite installation, what happens when one goes down,
+  the security model and its limits. Persian: `docs/NODES.fa.md`.
 - `nodepanel/README.md` — the multi-location web panel.
 - `panel/SIMORGH-FORK-NOTICE.md` — what changed in the vpn-ui fork, its
   reseller system, and its testing status.
