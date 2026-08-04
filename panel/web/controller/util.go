@@ -113,6 +113,11 @@ func html(c *gin.Context, name string, title string, data gin.H) {
 	data["host"] = browserHost(c)
 	data["request_uri"] = c.Request.RequestURI
 	data["base_path"] = c.GetString("base_path")
+	// The display name every page renders. It has to be copied out of the gin
+	// context and into the template DATA: templates resolve {{ .brand }} against
+	// this map, not against c.Set keys, so setting it in middleware alone would
+	// have rendered "<no value>" on every page that used it.
+	data["brand"] = c.GetString("brand")
 	// Every page funnels through here and includes the sidebar with the dot, so
 	// putting the caller's permissions in once makes them available panel-wide with
 	// no round trip and no nav flicker on first paint.

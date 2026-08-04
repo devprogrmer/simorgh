@@ -16,10 +16,29 @@ source-availability requirements carry over to this fork unchanged.
 
 ## What actually changed in this fork
 
-- The panel's display name (`config/name`) was changed to "Simorgh". This
-  is the single, central identifier the panel's `GetName()` reads from.
-- Nothing else. No functional code, protocol handling, database schema,
-  or UI logic was modified.
+- The panel's display name (`config/name`) was changed to "Simorgh".
+
+  **This did not do what that line originally claimed.** `config/name` was
+  described here as "the single, central identifier the panel's `GetName()`
+  reads from", but `GetName()` was called in exactly one place — a startup log
+  line in `main.go` — while the user-facing UI hardcoded "VPN-UI" in the
+  sidebar, the login page, the dashboard tile and the two-factor issuer. The
+  panel a customer actually saw was still branded upstream.
+
+  It is now wired through: `web/controller/util.go` puts the name into the
+  template data every page renders, and those templates read `{{ .brand }}`.
+  The systemd unit name, the `/var/log` path and the database filename are
+  deliberately NOT renamed — those are on-disk identities existing installs
+  depend on, and changing them would orphan a running service and its data.
+
+- The sidebar mark is an original SVG (`web/assets/img/logo.svg`) drawn in
+  `currentColor`, so it takes the panel's accent in all three themes rather
+  than pinning a colour that would be wrong in two of them.
+
+- Multi-node support was added. The reasoning below for why it was *not* built
+  originally was correct at the time and is kept for the record; what changed
+  is that the missing remote-agent layer has since been built rather than
+  worked around.
 
 ## What was deliberately NOT added, and why
 

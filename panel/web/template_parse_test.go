@@ -94,7 +94,7 @@ func TestSidebarLogoSrcResolves(t *testing.T) {
 		t.Fatalf("parse: %v", err)
 	}
 	var buf bytes.Buffer
-	data := map[string]any{"base_path": "/test/", "request_uri": "/test/panel/"}
+	data := map[string]any{"base_path": "/test/", "request_uri": "/test/panel/", "brand": "Simorgh"}
 	if err := tpl.ExecuteTemplate(&buf, "component/aSidebar", data); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
@@ -102,8 +102,14 @@ func TestSidebarLogoSrcResolves(t *testing.T) {
 	// JS-escapes the dynamic base_path (/ -> \/); the browser un-escapes it at
 	// parse time. Normalise before matching.
 	out := strings.ReplaceAll(buf.String(), `\/`, "/")
-	if !strings.Contains(out, "/test/assets/img/logo.png") {
+	if !strings.Contains(out, "/test/assets/img/logo.svg") {
 		t.Errorf("logo src not resolved with base_path (nil-data bug?); output:\n%s", out)
+	}
+	// The brand name reaches the component by the same route as base_path, and
+	// fails the same silent way: a missing key on a map renders as the empty
+	// string, so the mark's label would just disappear with nothing logged.
+	if !strings.Contains(out, "Simorgh") {
+		t.Errorf("brand not threaded into the sidebar; output:\n%s", out)
 	}
 	if strings.Contains(out, "<no value>") {
 		t.Errorf("template produced <no value> — data not threaded into the component")

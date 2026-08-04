@@ -434,9 +434,9 @@
     {{ end }}
 
     <!-- ===== VPN-UI panel + updater ===== -->
-    <article class="bo-tile bo-t-vpnui" aria-label="VPN-UI">
+    <article class="bo-tile bo-t-vpnui" aria-label="{{ .brand }}">
       <div class="bo-tile-head">
-        <h3 class="bo-tile-title">VPN-UI</h3>
+        <h3 class="bo-tile-title">{{ .brand }}</h3>
         <button type="button" class="bo-icon-btn bo-icon-btn--accent"
           :disabled="panelUpdate.checking" @click="checkForUpdate(true)">
           <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-refresh"></use></svg>

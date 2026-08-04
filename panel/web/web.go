@@ -234,6 +234,17 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	engine.Use(sessions.Sessions("vpn-ui", store))
 	engine.Use(func(c *gin.Context) {
 		c.Set("base_path", basePath)
+		// The display name every template renders. Templates used to hardcode
+		// "VPN-UI", which meant config/name -- documented as the panel's single
+		// central identifier -- actually reached exactly one startup log line
+		// while the whole UI kept saying something else. Setting it here is what
+		// makes that claim true.
+		//
+		// Deliberately NOT applied to the systemd unit name, the /var/log path or
+		// the database filename: those are on-disk identities that existing
+		// installs already depend on, and renaming them would orphan a running
+		// service and its data on the next upgrade.
+		c.Set("brand", config.GetName())
 	})
 	engine.Use(func(c *gin.Context) {
 		uri := c.Request.RequestURI
