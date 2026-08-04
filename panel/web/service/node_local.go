@@ -117,10 +117,47 @@ func (r *LocalRunner) Logs(ctx context.Context, core string) (string, error) {
 	return r.coreService.CoreLogs(core), nil
 }
 
-// Apply is filled in by the next task, which needs BuildDesiredState to exist
-// before it has anything to apply.
+// Apply makes this host match the state, idempotently.
+//
+// The change gate is correctness, not an optimisation. The tick runs every few
+// seconds, and raising a daemon tears down its listening socket: re-applying an
+// unchanged state every tick would drop every live connection on the node,
+// continuously, for as long as the panel was running. So an unchanged hash means
+// do nothing and report the inbounds as applied, which they are.
 func (r *LocalRunner) Apply(ctx context.Context, state node.DesiredState) (node.ApplyResult, error) {
-	return node.ApplyResult{}, errNotYetImplemented
+	res := node.ApplyResult{Hash: state.Hash, Errors: map[int]string{}}
+	for _, in := range state.Inbounds {
+		res.Applied = append(res.Applied, in.InboundId)
+	}
+
+	r.mu.Lock()
+	unchanged := state.Hash != "" && state.Hash == r.lastHash
+	r.mu.Unlock()
+	if unchanged {
+		return res, nil
+	}
+
+	if err := r.writeCerts(state.Certs); err != nil {
+		return res, err
+	}
+
+	// Materialising the inbounds into the local database, and restarting the
+	// cores that own them, is the next task: it has to reconcile against what is
+	// already there rather than overwrite, since on the MASTER this same code
+	// path is applying to the database that is also the source of truth.
+	// Recording the hash is deferred with it -- claiming a state was applied
+	// before it is would make the gate above skip the real work forever.
+	return res, errNotYetImplemented
+}
+
+// writeCerts drops the CA and per-protocol key material a node needs onto disk.
+// Nothing yet: the certificate task defines what the map holds, and inventing a
+// layout here that it then has to change would be worse than an explicit gap.
+func (r *LocalRunner) writeCerts(certs map[string][]byte) error {
+	if len(certs) == 0 {
+		return nil
+	}
+	return errNotYetImplemented
 }
 
 // Collect and Enforce are filled in by the traffic-split task, which moves the

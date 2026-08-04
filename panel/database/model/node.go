@@ -46,7 +46,18 @@ type Node struct {
 	APIPort int    `json:"apiPort" form:"apiPort"`
 
 	IsLocal bool `json:"isLocal" gorm:"default:0"`
-	Enable  bool `json:"enable" form:"enable" gorm:"default:1"`
+
+	// Enable deliberately carries NO gorm default, unlike most bool columns in
+	// this schema. GORM omits Go zero values from an INSERT when a default tag is
+	// present, so `gorm:"default:1"` silently rewrites an explicit Enable:false to
+	// true -- verified directly: a row created with false reads back as true.
+	//
+	// On a pre-existing table a default is what backfills old rows, which is why
+	// the rest of the schema uses them. This table is new, so there are no old
+	// rows to backfill and the tag would buy nothing while turning "disable this
+	// node" into a no-op. Callers set Enable explicitly; unset therefore means
+	// disabled, which is the safe direction to fail in.
+	Enable bool `json:"enable" form:"enable"`
 
 	// TLS material.
 	//
@@ -104,7 +115,11 @@ type InboundNode struct {
 	// everywhere.
 	Port   int    `json:"port" gorm:"default:0"`
 	Listen string `json:"listen"`
-	Enable bool   `json:"enable" gorm:"default:1"`
+
+	// No gorm default, for the reason spelled out on Node.Enable: a default tag
+	// makes GORM drop an explicit false from the INSERT, so "serve this inbound
+	// everywhere except Helsinki" would silently keep serving it in Helsinki.
+	Enable bool `json:"enable"`
 
 	// LastError is this placement's own failure, kept per placement so the UI can
 	// say "up on Frankfurt, failed on Helsinki" rather than marking the whole

@@ -131,6 +131,49 @@ func TestSeedLocalNodeRecreatesMissingLocalRow(t *testing.T) {
 	}
 }
 
+// Enable:false must survive a round trip through the database.
+//
+// It did not, and the cause is worth guarding permanently: GORM omits Go zero
+// values from an INSERT when the field carries a `default` tag, so a
+// `gorm:"default:1"` on Enable silently rewrote an explicit false to true. The
+// visible symptom would have been an operator disabling an inbound on one node
+// and that node carrying on serving it -- with nothing anywhere reporting a
+// problem, because as far as every later read was concerned the row said
+// enabled.
+//
+// The same trap is waiting for any future bool column here, which is why this
+// tests the round trip rather than the struct tag.
+func TestDisabledRowsStayDisabled(t *testing.T) {
+	initTestDB(t)
+
+	n := model.Node{Name: "paused", Address: "203.0.113.30", APIPort: 62050, Enable: false}
+	if err := db.Create(&n).Error; err != nil {
+		t.Fatal(err)
+	}
+	var gotNode model.Node
+	if err := db.Where("name = ?", "paused").First(&gotNode).Error; err != nil {
+		t.Fatal(err)
+	}
+	if gotNode.Enable {
+		t.Error("Node.Enable=false read back as true; a disabled node would still be driven")
+	}
+
+	in := model.Inbound{Tag: "somewhere", Enable: true, Port: 443}
+	if err := db.Create(&in).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.InboundNode{InboundId: in.Id, NodeId: n.Id, Enable: false}).Error; err != nil {
+		t.Fatal(err)
+	}
+	var gotPlacement model.InboundNode
+	if err := db.Where("inbound_id = ? AND node_id = ?", in.Id, n.Id).First(&gotPlacement).Error; err != nil {
+		t.Fatal(err)
+	}
+	if gotPlacement.Enable {
+		t.Error("InboundNode.Enable=false read back as true; the inbound would still be served on that node")
+	}
+}
+
 // The unique index on (inbound_id, node_id) is the last line of defence against
 // a double placement, and it has to hold even when a caller bypasses the
 // seeder's own guard -- ImportDB swaps the database file wholesale, so no
