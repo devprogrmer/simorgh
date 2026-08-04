@@ -3,6 +3,7 @@ module github.com/mhsanaei/3x-ui/v2
 go 1.26.2
 
 require (
+	github.com/Jipok/wgctrl-go v1.2.0
 	github.com/gin-contrib/gzip v1.2.6
 	github.com/gin-contrib/sessions v1.1.0
 	github.com/gin-gonic/gin v1.12.0
@@ -36,7 +37,6 @@ require (
 
 require (
 	github.com/Azure/go-ntlmssp v0.1.1 // indirect
-	github.com/Jipok/wgctrl-go v1.2.0 // indirect
 	github.com/andybalholm/brotli v1.2.1 // indirect
 	github.com/apernet/quic-go v0.59.1-0.20260217092621-db4786c77a22 // indirect
 	github.com/bytedance/gopkg v0.1.4 // indirect
