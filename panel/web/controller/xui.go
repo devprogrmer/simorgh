@@ -15,6 +15,7 @@ type XUIController struct {
 	coreController        *CoreController
 	adminController       *AdminController
 	resellerController    *ResellerController
+	nodeController        *NodeController
 }
 
 // NewXUIController creates a new XUIController and initializes its routes.
@@ -49,6 +50,7 @@ func (a *XUIController) initRouter(g *gin.RouterGroup) {
 	a.coreController = NewCoreController(g)
 	a.adminController = NewAdminController(g)
 	a.resellerController = NewResellerController(g)
+	a.nodeController = NewNodeController(g)
 }
 
 // index renders the main panel index page.

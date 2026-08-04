@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -126,6 +127,100 @@ func (s *NodeService) RunnerFor(id int) (node.Runner, error) {
 		Cert:    cliCert,
 		Key:     cliKey,
 	})
+}
+
+// AddNodeRequest is what adding a node needs. The SSH credential is used once
+// and never stored; see node.Bootstrap.
+type AddNodeRequest struct {
+	Name       string
+	Host       string
+	SSHPort    int
+	User       string
+	Password   string
+	PrivateKey string
+	APIPort    int
+}
+
+// Add bootstraps a machine and records it.
+//
+// The row is written only AFTER the machine is up and its certificate is
+// issued. Creating it first and repairing on failure would leave a node in the
+// list that has never been reachable, which reads as an outage rather than as
+// an incomplete setup.
+func (s *NodeService) Add(ctx context.Context, req AddNodeRequest) (*model.Node, error) {
+	if strings.TrimSpace(req.Name) == "" {
+		return nil, errors.New("a node needs a name")
+	}
+	if strings.TrimSpace(req.Host) == "" {
+		return nil, errors.New("a node needs an address to dial")
+	}
+	if req.Name == model.LocalNodeName {
+		return nil, fmt.Errorf("%q is reserved for this panel's own host", model.LocalNodeName)
+	}
+	var existing int64
+	if err := database.GetDB().Model(&model.Node{}).
+		Where("name = ?", req.Name).Count(&existing).Error; err != nil {
+		return nil, err
+	}
+	if existing > 0 {
+		return nil, fmt.Errorf("a node named %q already exists", req.Name)
+	}
+
+	caCert, caKey, err := s.ensureCA()
+	if err != nil {
+		return nil, err
+	}
+
+	// The binary the node runs is the one this panel is running, read from its
+	// own path. Downloading a release instead would risk installing a different
+	// version than the master, and the two have to agree on the wire format.
+	binary, err := os.ReadFile(nodeBinarySource())
+	if err != nil {
+		return nil, fmt.Errorf("cannot read this panel's own binary to send to the node: %w", err)
+	}
+
+	res, err := node.Bootstrap(ctx, node.BootstrapRequest{
+		Host:       req.Host,
+		Port:       req.SSHPort,
+		User:       req.User,
+		Password:   req.Password,
+		PrivateKey: req.PrivateKey,
+		APIPort:    req.APIPort,
+	}, caCert, caKey, binary)
+	if err != nil {
+		return nil, err
+	}
+
+	n := model.Node{
+		Name:       req.Name,
+		Address:    req.Host,
+		APIPort:    res.APIPort,
+		Enable:     true,
+		Status:     model.NodeOnline,
+		LastSeen:   time.Now().Unix(),
+		Arch:       res.Arch,
+		Distro:     res.Distro,
+		ServerCert: res.ServerCert,
+		ServerKey:  res.ServerKey,
+	}
+	if err := database.GetDB().Create(&n).Error; err != nil {
+		return nil, err
+	}
+	logger.Infof("node %q added at %s (%s, %s)", n.Name, n.Address, n.Arch, n.Distro)
+
+	// Returned with the key material stripped: this value goes straight back to
+	// the browser.
+	n.ServerCert, n.ServerKey = "", ""
+	return &n, nil
+}
+
+// nodeBinarySource is the path of the running panel binary, which is what gets
+// sent to a node.
+func nodeBinarySource() string {
+	if p, err := os.Executable(); err == nil {
+		return p
+	}
+	return os.Args[0]
 }
 
 // MarkResult records the outcome of one contact with a node.
