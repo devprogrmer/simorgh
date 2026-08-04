@@ -141,6 +141,18 @@ func (r *LocalRunner) Apply(ctx context.Context, state node.DesiredState) (node.
 		return res, err
 	}
 
+	// A node that has applied nothing, being told to run nothing, genuinely has
+	// nothing to do -- so this succeeds rather than reporting the work below as
+	// missing. The lastHash guard is what keeps that honest: once a state HAS
+	// been applied, an empty one means tear those inbounds down, which is real
+	// work and is not implemented yet, so it still reports as such.
+	if len(state.Inbounds) == 0 && r.lastHash == "" {
+		r.mu.Lock()
+		r.lastHash = state.Hash
+		r.mu.Unlock()
+		return res, nil
+	}
+
 	// Materialising the inbounds into the local database, and restarting the
 	// cores that own them, is the next task: it has to reconcile against what is
 	// already there rather than overwrite, since on the MASTER this same code

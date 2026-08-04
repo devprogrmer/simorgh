@@ -2670,6 +2670,11 @@ func main() {
 	}
 
 	switch os.Args[1] {
+	case "node":
+		// Serve one machine to a master panel instead of serving a web UI. See
+		// node_mode.go for why this is the same binary rather than a separate
+		// agent.
+		runNodeMode(os.Args[2:])
 	case "run":
 		err := runCmd.Parse(os.Args[2:])
 		if err != nil {
