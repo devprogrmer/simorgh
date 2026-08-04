@@ -18,6 +18,18 @@ CORE_DIR="$DATA_DIR/core"
 PROTOCOLS_DIR="$DATA_DIR/protocols"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
 
+# The multi-protocol panel (WireGuard, OpenVPN, L2TP, Xray, IPsec/IKEv2, PPTP,
+# SSTP, OpenConnect, MTProto, AmneziaWG, GRE, SSH, RADIUS) lives in panel/ and is
+# a separate program from the tunnel core. It is BUILT FROM SOURCE here rather
+# than downloaded: panel/deploy.sh fetches a release binary from the upstream
+# vpn-ui repository, which is a different program from this fork and would not
+# carry anything added here.
+PANEL_SRC_DIR="$DATA_DIR/panel"
+PANEL_BIN="/usr/local/bin/simorgh-panel"
+PANEL_SERVICE="vpn-ui"
+GO_MIN="1.26.2"
+GO_VERSION="1.26.5"
+
 # Where to fetch the project from when this script is run stand-alone (the
 # quick-install one-liner) and there's no local core/ checkout next to it.
 # Override with: SIMORGH_REPO=https://github.com/you/your-fork.git ./install.sh
@@ -146,6 +158,196 @@ _sync_protocols_source() {
         rsync -a --delete "$SCRIPT_DIR/protocols/" "$PROTOCOLS_DIR/" 2>>"$LOG_FILE" || \
             cp -r "$SCRIPT_DIR/protocols" "$DATA_DIR/"
     fi
+}
+
+# Same idea again, for panel/. Kept separate from core because the panel is a
+# much bigger tree and only copied when someone actually asks for it.
+_sync_panel_source() {
+    mkdir -p "$DATA_DIR"
+
+    if [ -d "$SCRIPT_DIR/panel" ]; then
+        rsync -a --delete "$SCRIPT_DIR/panel/" "$PANEL_SRC_DIR/" 2>>"$LOG_FILE" || \
+            cp -r "$SCRIPT_DIR/panel" "$DATA_DIR/"
+        return 0
+    fi
+    if [ -d "$PANEL_SRC_DIR" ]; then
+        return 0
+    fi
+
+    echo -e "  ${Y}No local panel/ next to this script - fetching source...${NC}"
+    local tmp; tmp="$(mktemp -d)"
+    if ! git clone --depth=1 "$REPO_URL" "$tmp" >>"$LOG_FILE" 2>&1 || [ ! -d "$tmp/panel" ]; then
+        echo -e "  ${R}[ERROR] Could not fetch panel/ from $REPO_URL${NC}"
+        rm -rf "$tmp"; return 1
+    fi
+    rsync -a "$tmp/panel/" "$PANEL_SRC_DIR/" 2>>"$LOG_FILE" || cp -r "$tmp/panel" "$DATA_DIR/"
+    rm -rf "$tmp"
+}
+
+# ---------------------------------------------------------------------------
+# panel: Go toolchain + build + install
+# ---------------------------------------------------------------------------
+
+# ver_ge compares dotted versions: "1.26.5" >= "1.26.2". Pure sort -V, so it
+# handles the 10-vs-9 case that a string compare gets wrong.
+ver_ge() { [ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | head -1)" = "$2" ]; }
+
+# ensure_go makes a new-enough Go available and echoes its path.
+#
+# The distro package is checked first and usually rejected: panel/go.mod requires
+# go 1.26.2, and every stable distro currently ships something older (Ubuntu
+# 24.04 has 1.22), which fails the build with a message about the toolchain
+# rather than about the panel. So the official tarball is fetched to a private
+# directory instead of replacing whatever the system has.
+ensure_go() {
+    local sys_go; sys_go="$(command -v go 2>/dev/null || true)"
+    if [ -n "$sys_go" ]; then
+        local v; v="$("$sys_go" env GOVERSION 2>/dev/null | sed 's/^go//')"
+        if [ -n "$v" ] && ver_ge "$v" "$GO_MIN"; then
+            echo "$sys_go"; return 0
+        fi
+        echo -e "  ${DIM}System Go is $v; the panel needs $GO_MIN or newer.${NC}" >&2
+    fi
+
+    local priv="$DATA_DIR/go/bin/go"
+    if [ -x "$priv" ] && ver_ge "$("$priv" env GOVERSION 2>/dev/null | sed 's/^go//')" "$GO_MIN"; then
+        echo "$priv"; return 0
+    fi
+
+    echo -e "  ${Y}Fetching Go $GO_VERSION (needed to build the panel)...${NC}" >&2
+    local arch; case "$(uname -m)" in
+        x86_64)  arch=amd64 ;;
+        aarch64|arm64) arch=arm64 ;;
+        armv7l)  arch=armv6l ;;
+        *) echo -e "  ${R}Unsupported architecture $(uname -m)${NC}" >&2; return 1 ;;
+    esac
+    local tgz="/tmp/go-$GO_VERSION.tar.gz"
+    if ! curl -fsSL --retry 3 -o "$tgz" "https://go.dev/dl/go$GO_VERSION.linux-$arch.tar.gz" 2>>"$LOG_FILE"; then
+        echo -e "  ${R}Could not download Go. Install Go $GO_MIN+ yourself and re-run.${NC}" >&2
+        return 1
+    fi
+    rm -rf "$DATA_DIR/go"
+    mkdir -p "$DATA_DIR/go"
+    tar -C "$DATA_DIR/go" --strip-components=1 -xzf "$tgz" 2>>"$LOG_FILE" || {
+        echo -e "  ${R}Could not unpack Go.${NC}" >&2; rm -f "$tgz"; return 1; }
+    rm -f "$tgz"
+    [ -x "$priv" ] || { echo -e "  ${R}Go unpacked but $priv is missing.${NC}" >&2; return 1; }
+    echo "$priv"
+}
+
+install_panel() {
+    banner
+    echo -e "  ${BOLD}Install the multi-protocol panel${NC}"
+    echo
+    echo -e "  ${DIM}WireGuard · OpenVPN · L2TP · Xray (VMess/VLESS/Trojan/Shadowsocks)${NC}"
+    echo -e "  ${DIM}IPsec/IKEv2 · PPTP · SSTP · OpenConnect (Cisco) · MTProto${NC}"
+    echo -e "  ${DIM}AmneziaWG · GRE · SSH · RADIUS — with users, quotas,${NC}"
+    echo -e "  ${DIM}subscription links and reseller accounts.${NC}"
+    echo
+    echo -e "  ${DIM}This builds from source on this machine. First run takes a${NC}"
+    echo -e "  ${DIM}few minutes and needs to reach the Go module proxy.${NC}"
+    echo
+
+    _sync_panel_source || { pause; return 1; }
+
+    local go_bin; go_bin="$(ensure_go)" || { pause; return 1; }
+    echo -e "  ${G}Using $("$go_bin" env GOVERSION)${NC}"
+
+    echo -e "  ${Y}Building the panel (this is the slow part)...${NC}"
+    if ! ( cd "$PANEL_SRC_DIR" && GOFLAGS=-mod=mod "$go_bin" build -o "$PANEL_BIN" . ) >>"$LOG_FILE" 2>&1; then
+        echo -e "  ${R}[ERROR] Panel build failed. Last lines of $LOG_FILE:${NC}"
+        tail -20 "$LOG_FILE" | sed 's/^/    /'
+        pause; return 1
+    fi
+    chmod +x "$PANEL_BIN"
+    echo -e "  ${G}Built $PANEL_BIN${NC}"
+
+    echo -e "  ${Y}Installing the service...${NC}"
+    if ! "$PANEL_BIN" --systemd; then
+        echo -e "  ${R}[ERROR] Could not install the panel service.${NC}"
+        pause; return 1
+    fi
+
+    # A panel reachable on a guessable port with admin/admin is a compromised
+    # panel, so the default is to randomise the port, path and credentials rather
+    # than to leave the operator to remember to.
+    echo
+    # --random is a TOP-LEVEL flag, not a `setting` one: `setting` has its own
+    # flag set (-port, -username, -password, -webBasePath) and would reject it.
+    if [ "$(ask 'Randomise the port, URL path and login? (recommended) [y/n]' 'y')" = "y" ]; then
+        "$PANEL_BIN" --random || true
+    fi
+
+    echo
+    echo -e "  ${G}${BOLD}Panel installed.${NC}"
+    "$PANEL_BIN" info 2>/dev/null || true
+    echo
+    echo -e "  ${DIM}Write the URL and login down now — the password is not${NC}"
+    echo -e "  ${DIM}recoverable from here, only resettable.${NC}"
+    pause
+}
+
+manage_panel() {
+    while true; do
+        banner
+        if [ ! -x "$PANEL_BIN" ]; then
+            echo -e "  ${Y}The panel is not installed yet.${NC}"
+            pause; return
+        fi
+        local state; state="$(systemctl is-active "$PANEL_SERVICE" 2>/dev/null || echo unknown)"
+        case "$state" in
+            active) echo -e "  Panel: ${G}running${NC}" ;;
+            *)      echo -e "  Panel: ${R}$state${NC}" ;;
+        esac
+        echo
+        echo "  1) Show URL and login"
+        echo "  2) Start"
+        echo "  3) Stop"
+        echo "  4) Restart"
+        echo "  5) Live logs"
+        echo "  6) Change port / path / login"
+        echo "  7) Rebuild from source (after updating this repo)"
+        echo "  8) Uninstall the panel"
+        echo "  0) Back"
+        echo
+        local c; c=$(ask "Choose" "0")
+        case "$c" in
+            1) "$PANEL_BIN" info; pause ;;
+            2) systemctl start "$PANEL_SERVICE"; pause ;;
+            3) systemctl stop "$PANEL_SERVICE"; pause ;;
+            4) systemctl restart "$PANEL_SERVICE"; pause ;;
+            5) echo -e "  ${DIM}Ctrl-C to stop following.${NC}"; journalctl -u "$PANEL_SERVICE" -f ;;
+            6)
+               # `setting` with no flags would call updateSetting with every
+               # value empty, which changes nothing and looks like a failure.
+               # Collect the values first and pass only what was filled in.
+               local u p prt bp; local -a args=()
+               u=$(ask "New username (blank = leave alone)" "")
+               p=$(ask "New password (blank = leave alone)" "")
+               prt=$(ask "New port (blank = leave alone)" "")
+               bp=$(ask "New URL path (blank = leave alone)" "")
+               [ -n "$u" ]   && args+=(-username "$u")
+               [ -n "$p" ]   && args+=(-password "$p")
+               [ -n "$prt" ] && args+=(-port "$prt")
+               [ -n "$bp" ]  && args+=(-webBasePath "$bp")
+               if [ ${#args[@]} -eq 0 ]; then
+                   echo -e "  ${DIM}Nothing entered; leaving settings as they are.${NC}"
+               else
+                   "$PANEL_BIN" setting "${args[@]}" && systemctl restart "$PANEL_SERVICE"
+               fi
+               pause ;;
+            7) install_panel ;;
+            8)
+               # Delegates to the binary's own uninstall, which also removes the
+               # child daemons, nftables rules, policy routing and /etc configs
+               # it created. Deleting the binary alone would leave all of that
+               # running with nothing left to manage it.
+               "$PANEL_BIN" --uninstall
+               rm -f "$PANEL_BIN"
+               echo -e "  ${G}Panel removed.${NC}"; pause; return ;;
+            0) return ;;
+        esac
+    done
 }
 
 install_core() {
@@ -585,6 +787,77 @@ _start_simorgh_multiclient() {
 }
 
 # ---------------------------------------------------------------------------
+# guided setup
+# ---------------------------------------------------------------------------
+#
+# Shown on a fresh machine, before the menu. The menu lists capabilities; it does
+# not tell you which of them you want, or that two of them have to happen in a
+# particular order. Someone installing this for the first time is choosing
+# between "make my own connection faster" and "run a service for other people",
+# and those are different setups that the menu presents as neighbouring numbers.
+#
+# The ordering this enforces is the part that is easy to get wrong unaided: on a
+# combined server the tunnel has to exist before the panel is pointed through it,
+# because the panel's outbound is configured against a tunnel that is already up.
+guided_setup() {
+    banner
+    echo -e "  ${BOLD}What should this server do?${NC}"
+    echo
+    echo -e "  ${W}1) Low-latency tunnel only${NC}"
+    echo -e "     ${DIM}Iran server <-> server abroad. Lower ping for games, for you.${NC}"
+    echo -e "     ${DIM}No accounts, no panel.${NC}"
+    echo
+    echo -e "  ${W}2) VPN panel only${NC}"
+    echo -e "     ${DIM}Hand out accounts to other people: WireGuard, OpenVPN, L2TP,${NC}"
+    echo -e "     ${DIM}Xray, IPsec/IKEv2, PPTP, SSTP, Cisco, MTProto and more, with${NC}"
+    echo -e "     ${DIM}quotas, subscription links and resellers. Usual choice for a${NC}"
+    echo -e "     ${DIM}server abroad.${NC}"
+    echo
+    echo -e "  ${W}3) Both — tunnel first, then the panel over it${NC}"
+    echo -e "     ${DIM}Usual choice for an Iran server: customers connect to the panel${NC}"
+    echo -e "     ${DIM}here, and their traffic leaves through the tunnel abroad.${NC}"
+    echo
+    echo -e "  ${W}4) Skip this, show me the menu${NC}"
+    echo
+    local c; c=$(ask "Choose" "3")
+
+    case "$c" in
+        1)
+            install_core
+            create_tunnel
+            ;;
+        2)
+            install_panel
+            ;;
+        3)
+            echo
+            echo -e "  ${Y}Step 1 of 3 — building the tunnel core.${NC}"
+            pause
+            install_core
+            echo
+            echo -e "  ${Y}Step 2 of 3 — creating the tunnel.${NC}"
+            echo -e "  ${DIM}Run this on BOTH servers with the same password and${NC}"
+            echo -e "  ${DIM}transport: pick IRAN here and FOREIGN on the other one.${NC}"
+            pause
+            create_tunnel
+            echo
+            echo -e "  ${Y}Step 3 of 3 — installing the panel.${NC}"
+            echo -e "  ${DIM}The tunnel is up, so the panel can now be pointed through${NC}"
+            echo -e "  ${DIM}it. In the panel this is an OUTBOUND; set it after login.${NC}"
+            pause
+            install_panel
+            ;;
+        *)  ;;
+    esac
+}
+
+# first_run reports whether this machine has neither the tunnel nor the panel
+# set up yet, which is the only time the guided flow is worth interrupting for.
+first_run() {
+    [ ! -f "$CONF_FILE" ] && [ ! -x "$PANEL_BIN" ]
+}
+
+# ---------------------------------------------------------------------------
 # main menu
 # ---------------------------------------------------------------------------
 main_menu() {
@@ -600,6 +873,13 @@ main_menu() {
         echo "  7) Install WireGuard Core"
         echo "  8) Add WireGuard Customer"
         echo "  9) List / Remove WireGuard Customers"
+        echo -e "  ${DIM}────────── Panel (all protocols, users, resellers) ──────────${NC}"
+        if [ -x "$PANEL_BIN" ]; then
+            echo " 10) Manage Panel"
+        else
+            echo " 10) Install Panel"
+        fi
+        echo " 11) Guided setup"
         echo "  0) Exit"
         echo
         local c; c=$(ask "Choose" "0")
@@ -613,6 +893,8 @@ main_menu() {
             7) _wg_menu_install ;;
             8) _wg_menu_add ;;
             9) _wg_menu_list_remove ;;
+            10) if [ -x "$PANEL_BIN" ]; then manage_panel; else install_panel; fi ;;
+            11) guided_setup ;;
             0) exit 0 ;;
         esac
     done
@@ -623,6 +905,13 @@ require_root
 if [ "${1:-}" = "--start" ]; then
     start_from_conf
     exit 0
+fi
+
+# A fresh machine gets the "what do you want" question once. Afterwards the menu
+# opens directly, since by then the operator has made that decision and being
+# asked again on every run is noise.
+if first_run; then
+    guided_setup
 fi
 
 main_menu
