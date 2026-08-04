@@ -1,0 +1,179 @@
+{{ template "page/head_start" .}}
+{{ template "page/head_end" .}}
+
+{{ template "page/body_start" .}}
+{{template "page/shell_start" . }}
+      <a-spin :spinning="spinning" :delay="300" tip='{{ i18n "loading"}}' size="large">
+        <transition name="list" appear>
+          <a-row :gutter="[16, 16]" :style="{ margin: 0 }">
+            <a-col :span="24">
+              <a-card hoverable :style="{ marginBottom: '16px' }">
+                <div :style="{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }">
+                  <a-button type="primary" icon="plus" @click="openAdd()">{{ i18n "pages.nodes.add" }}</a-button>
+                  <a-button icon="reload" @click="loadNodes(true)"></a-button>
+                </div>
+              </a-card>
+
+              <!-- One card per node rather than a table row. A node's identity is
+                   three things an operator reads together -- is it up, what is it
+                   running, when was it last heard from -- and none of them fit a
+                   narrow column without the status collapsing into the address. -->
+              <div class="bo-cards" v-if="nodes.length">
+                <a-card v-for="n in nodes" :key="n.id" hoverable :style="{ marginBottom: '12px' }">
+                  <div :style="{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }">
+                    <a-badge :status="statusOf(n)"></a-badge>
+                    <span :style="{ fontWeight: 500, fontSize: '15px' }">[[ n.name ]]</span>
+                    <a-tag v-if="n.isLocal" color="blue">{{ i18n "pages.nodes.local" }}</a-tag>
+                    <span :style="{ color: '#888' }" v-if="!n.isLocal">[[ n.address ]]:[[ n.apiPort ]]</span>
+                    <span :style="{ flex: 1 }"></span>
+                    <a-tag v-if="n.arch">[[ n.arch ]]</a-tag>
+                    <a-tag v-if="n.distro">[[ n.distro ]]</a-tag>
+                    <a-button size="small" icon="info-circle" @click="showStatus(n)"></a-button>
+                    <a-button size="small" icon="tool" @click="provision(n)" v-if="!n.isLocal"></a-button>
+                    <a-popconfirm @confirm="del(n)" title='{{ i18n "sureDelete" }}'
+                                  v-if="!n.isLocal" ok-text='{{ i18n "sure" }}'>
+                      <a-button size="small" type="danger" icon="delete"></a-button>
+                    </a-popconfirm>
+                  </div>
+                  <div v-if="n.lastError" :style="{ marginTop: '8px', color: '#cf1322', fontSize: '13px' }">
+                    [[ n.lastError ]]
+                  </div>
+                  <div :style="{ marginTop: '6px', color: '#999', fontSize: '12px' }" v-if="n.lastSeen">
+                    {{ i18n "pages.nodes.lastSeen" }}: [[ new Date(n.lastSeen * 1000).toLocaleString() ]]
+                  </div>
+                </a-card>
+              </div>
+              <a-empty v-else description='{{ i18n "pages.nodes.none" }}'></a-empty>
+            </a-col>
+          </a-row>
+        </transition>
+      </a-spin>
+
+      <a-modal v-model="addVisible" title='{{ i18n "pages.nodes.add" }}'
+               @ok="submitAdd" :confirm-loading="adding" :mask-closable="false">
+        <!-- The SSH credential is used once to plant the binary and the
+             certificate, then discarded. It is never stored, which is why this
+             form asks for it every time rather than remembering it. -->
+        <a-form layout="vertical">
+          <a-form-item label='{{ i18n "pages.nodes.name" }}'>
+            <a-input v-model="form.name" placeholder="frankfurt"></a-input>
+          </a-form-item>
+          <a-form-item label='{{ i18n "pages.nodes.host" }}'>
+            <a-input v-model="form.host" placeholder="203.0.113.10"></a-input>
+          </a-form-item>
+          <a-row :gutter="8">
+            <a-col :span="12">
+              <a-form-item label="SSH port">
+                <a-input-number v-model="form.sshPort" :min="1" :max="65535" :style="{ width: '100%' }"></a-input-number>
+              </a-form-item>
+            </a-col>
+            <a-col :span="12">
+              <a-form-item label="API port">
+                <a-input-number v-model="form.apiPort" :min="1" :max="65535" :style="{ width: '100%' }"></a-input-number>
+              </a-form-item>
+            </a-col>
+          </a-row>
+          <a-form-item label='{{ i18n "pages.nodes.user" }}'>
+            <a-input v-model="form.user" placeholder="root"></a-input>
+          </a-form-item>
+          <a-form-item label='{{ i18n "pages.nodes.password" }}'>
+            <a-input-password v-model="form.password"></a-input-password>
+          </a-form-item>
+          <a-alert type="info" show-icon :message='"{{ i18n "pages.nodes.sshNotice" }}"'></a-alert>
+        </a-form>
+      </a-modal>
+
+      <a-modal v-model="statusVisible" :title="statusTitle" :footer="null" width="640px">
+        <a-table :columns="coreColumns" :data-source="cores" :pagination="false" size="small" row-key="name">
+        </a-table>
+      </a-modal>
+
+{{template "page/shell_end" . }}
+{{ template "page/body_scripts" .}}
+
+<!-- Defines the global themeSwitcher every page binds its root :class to. A page
+     that omits it does not merely render unthemed -- the Vue root fails to mount
+     and the body comes out empty, with the only clue in the console. -->
+{{template "component/aThemeSwitch" .}}
+
+<script>
+  const app = new Vue({
+    delimiters: ['[[', ']]'],
+    mixins: [MediaQueryMixin],
+    el: '#app',
+    data: {
+      // The shell template binds against all three of these. A page that omits
+      // any one does not render unthemed or untitled -- the Vue root fails to
+      // mount and the body comes out empty, with the only clue in the console.
+      themeSwitcher,
+      pageTitle: '{{ i18n "menu.nodes" }}',
+      pageClass: '',
+      spinning: false,
+      nodes: [],
+      addVisible: false,
+      adding: false,
+      statusVisible: false,
+      statusTitle: '',
+      cores: [],
+      coreColumns: [
+        { title: 'Core', dataIndex: 'name' },
+        { title: 'State', dataIndex: 'state' },
+        { title: 'Inbounds', dataIndex: 'inbounds' },
+        { title: 'Detail', dataIndex: 'detail' },
+      ],
+      form: { name: '', host: '', sshPort: 22, apiPort: 62050, user: 'root', password: '' },
+    },
+    methods: {
+      statusOf(n) {
+        if (!n.enable) return 'default';
+        return n.status === 'online' ? 'success'
+             : n.status === 'provisioning' ? 'processing'
+             : 'error';
+      },
+      async loadNodes(showMsg) {
+        this.spinning = true;
+        const msg = await HttpUtil.get('/panel/nodes/list');
+        this.spinning = false;
+        if (!msg.success) return;
+        this.nodes = msg.obj || [];
+        if (showMsg) ObjectUtil.execute(() => {});
+      },
+      openAdd() {
+        this.form = { name: '', host: '', sshPort: 22, apiPort: 62050, user: 'root', password: '' };
+        this.addVisible = true;
+      },
+      async submitAdd() {
+        this.adding = true;
+        const msg = await HttpUtil.post('/panel/nodes/add', this.form);
+        this.adding = false;
+        if (!msg.success) return;
+        this.addVisible = false;
+        // The credential is not kept anywhere, here included.
+        this.form.password = '';
+        this.loadNodes();
+      },
+      async del(n) {
+        const msg = await HttpUtil.post('/panel/nodes/del/' + n.id);
+        if (msg.success) this.loadNodes();
+      },
+      async showStatus(n) {
+        this.statusTitle = n.name;
+        this.cores = [];
+        this.statusVisible = true;
+        const msg = await HttpUtil.get('/panel/nodes/status/' + n.id);
+        if (msg.success && msg.obj) this.cores = msg.obj.cores || [];
+      },
+      async provision(n) {
+        // Provisioning streams progress; the panel's own setup console renders
+        // the same ProvisionStep shape, so this hands off rather than
+        // duplicating it.
+        await HttpUtil.post('/panel/nodes/provision/' + n.id, { cores: [] });
+        this.loadNodes();
+      },
+    },
+    async mounted() {
+      await this.loadNodes();
+    },
+  });
+</script>
+{{ template "page/body_end" .}}

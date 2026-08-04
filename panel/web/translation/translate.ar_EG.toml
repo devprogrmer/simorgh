@@ -105,6 +105,7 @@
 "core" = "إعدادات النواة"
 "admins" = "الأدمنز"
 "resellers" = "الموزعين"
+"nodes" = "العقد"
 "logout" = "تسجيل خروج"
 "link" = "إدارة"
 
@@ -1042,3 +1043,14 @@
 "hasClients" = "الموزع ده لسه عنده حسابات. امسح الحسابات دي الأول."
 "bulkShort" = "لا يوجد حجم كافٍ للدفعة كاملة. ينقصك"
 "bulkPartial" = "الحسابات التي ستتم معالجتها"
+
+[pages.nodes]
+"add" = "Add node"
+"name" = "Name"
+"host" = "Address"
+"user" = "SSH user"
+"password" = "SSH password"
+"local" = "This machine"
+"lastSeen" = "Last seen"
+"none" = "No nodes yet"
+"sshNotice" = "The SSH login is used once to install the node, then discarded. It is never stored."

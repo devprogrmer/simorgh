@@ -44,6 +44,9 @@ func (a *XUIController) initRouter(g *gin.RouterGroup) {
 	// run their own resellers. The escalation that opens (assigning someone else's
 	// inbound to a reseller you then log in as) is closed in the service.
 	g.GET("/resellers", requirePerm(model.PermManageResellers), a.resellers)
+	// Super admin only, for the same reason the node API is: adding a node takes
+	// SSH credentials and gives root on another machine.
+	g.GET("/nodes", requireSuperAdmin(), a.nodes)
 
 	a.settingController = NewSettingController(g)
 	a.xraySettingController = NewXraySettingController(g)
@@ -90,6 +93,11 @@ func (a *XUIController) coreSettings(c *gin.Context) {
 // admins renders the Admins management page (super admin only).
 func (a *XUIController) admins(c *gin.Context) {
 	html(c, "admins.html", "pages.admins.title", nil)
+}
+
+// nodes renders the Nodes management page.
+func (a *XUIController) nodes(c *gin.Context) {
+	html(c, "nodes.html", "menu.nodes", nil)
 }
 
 // resellers renders the Resellers management page.

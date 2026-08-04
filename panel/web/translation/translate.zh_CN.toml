@@ -105,6 +105,7 @@
 "core" = "核心设置"
 "admins" = "管理员"
 "resellers" = "分销商"
+"nodes" = "节点"
 "logout" = "退出登录"
 "link" = "管理"
 
@@ -1042,3 +1043,14 @@
 "hasClients" = "此分销商名下仍有账户。请先删除这些账户。"
 "bulkShort" = "流量不足以完成整批操作。还差"
 "bulkPartial" = "将要处理的账号"
+
+[pages.nodes]
+"add" = "添加节点"
+"name" = "名称"
+"host" = "地址"
+"user" = "SSH 用户"
+"password" = "SSH 密码"
+"local" = "本机"
+"lastSeen" = "最后连接"
+"none" = "暂无节点"
+"sshNotice" = "SSH 登录信息仅用于安装节点一次，随后即被丢弃，绝不存储。"

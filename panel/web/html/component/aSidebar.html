@@ -87,6 +87,11 @@
                     {{ end }}
                     {{ if .perms.superAdmin }}
                     {
+                        key: '{{ .base_path }}panel/nodes',
+                        icon: 'cluster',
+                        title: '{{ i18n "menu.nodes"}}'
+                    },
+                    {
                         key: '{{ .base_path }}panel/admins',
                         icon: 'team',
                         title: '{{ i18n "menu.admins"}}'

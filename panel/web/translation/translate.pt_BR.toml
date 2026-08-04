@@ -105,6 +105,7 @@
 "core" = "Configurações de núcleo"
 "admins" = "Administradores"
 "resellers" = "Revendedores"
+"nodes" = "Nós"
 "logout" = "Sair"
 "link" = "Gerenciar"
 
@@ -1042,3 +1043,14 @@
 "hasClients" = "Este revendedor ainda possui contas. Exclua essas contas primeiro."
 "bulkShort" = "Trafego insuficiente para todo o lote. Faltam"
 "bulkPartial" = "Contas que serao processadas"
+
+[pages.nodes]
+"add" = "Add node"
+"name" = "Name"
+"host" = "Address"
+"user" = "SSH user"
+"password" = "SSH password"
+"local" = "This machine"
+"lastSeen" = "Last seen"
+"none" = "No nodes yet"
+"sshNotice" = "The SSH login is used once to install the node, then discarded. It is never stored."

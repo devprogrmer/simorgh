@@ -105,6 +105,7 @@
 "core" = "核心設定"
 "admins" = "管理員"
 "resellers" = "經銷商"
+"nodes" = "節點"
 "logout" = "退出登入"
 "link" = "管理"
 
@@ -1042,3 +1043,14 @@
 "hasClients" = "此經銷商名下仍有帳戶。請先刪除這些帳戶。"
 "bulkShort" = "流量不足以完成整批操作。還差"
 "bulkPartial" = "將要處理的帳號"
+
+[pages.nodes]
+"add" = "Add node"
+"name" = "Name"
+"host" = "Address"
+"user" = "SSH user"
+"password" = "SSH password"
+"local" = "This machine"
+"lastSeen" = "Last seen"
+"none" = "No nodes yet"
+"sshNotice" = "The SSH login is used once to install the node, then discarded. It is never stored."

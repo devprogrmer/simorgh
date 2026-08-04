@@ -105,6 +105,7 @@
 "core" = "コア設定"
 "admins" = "管理者"
 "resellers" = "リセラー"
+"nodes" = "ノード"
 "logout" = "ログアウト"
 "link" = "リンク管理"
 
@@ -1042,3 +1043,14 @@
 "hasClients" = "このリセラーはまだアカウントを保有しています。先にそのアカウントを削除してください。"
 "bulkShort" = "一括処理に必要な通信量が足りません。不足分"
 "bulkPartial" = "処理されるアカウント"
+
+[pages.nodes]
+"add" = "Add node"
+"name" = "Name"
+"host" = "Address"
+"user" = "SSH user"
+"password" = "SSH password"
+"local" = "This machine"
+"lastSeen" = "Last seen"
+"none" = "No nodes yet"
+"sshNotice" = "The SSH login is used once to install the node, then discarded. It is never stored."

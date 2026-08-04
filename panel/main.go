@@ -109,16 +109,19 @@ func requireRoot() {
 // deep-teal letters, a green hyphen — as a bold CLI banner. Falls back to plain
 // text when NO_COLOR is set or stdout isn't a TTY.
 func ansiVpnUI() string {
-	const text = "[VPN-UI]"
+	// Reads the configured name for the same reason the templates do: the
+	// startup banner is the first thing an operator sees, and it said VPN-UI
+	// while every page said something else.
+	text := "[" + config.GetName() + "]"
 	if os.Getenv("NO_COLOR") != "" || !stdoutIsTTY() {
 		return text
 	}
-	// 24-bit colour matched to media/logo.png.
+	// 24-bit colour matched to the panel's accent (--accent-strong, tokens.css).
 	const (
 		reset   = "\x1b[0m"
-		bracket = "\x1b[1;38;2;23;212;212m" // bright teal  #17d4d4
-		letter  = "\x1b[1;38;2;14;165;165m" // deep teal    #0ea5a5
-		hyphen  = "\x1b[1;38;2;79;175;100m" // green        #4faf64
+		bracket = "\x1b[1;38;2;27;191;159m" // #1bbf9f, the dark-theme accent
+		letter  = "\x1b[1;38;2;0;135;113m"  // #008771, the light-theme accent
+		hyphen  = "\x1b[1;38;2;79;175;100m" // green
 	)
 	var b strings.Builder
 	for _, r := range text {

@@ -105,6 +105,7 @@
 "core" = "Core Settings"
 "admins" = "Admins"
 "resellers" = "Resellers"
+"nodes" = "Nodes"
 "logout" = "Log Out"
 "link" = "Manage"
 
@@ -1316,3 +1317,14 @@
 "deleteCascadeDesc" = "Every account this reseller created is permanently deleted and its customers stop connecting."
 "bulkShort" = "Not enough traffic for the whole batch. You are short"
 "bulkPartial" = "Accounts that will be processed"
+
+[pages.nodes]
+"add" = "Add node"
+"name" = "Name"
+"host" = "Address"
+"user" = "SSH user"
+"password" = "SSH password"
+"local" = "This machine"
+"lastSeen" = "Last seen"
+"none" = "No nodes yet"
+"sshNotice" = "The SSH login is used once to install the node, then discarded. It is never stored."
