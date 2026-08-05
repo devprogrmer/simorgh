@@ -330,6 +330,8 @@
 "email" = "E-posta"
 "emailDesc" = "Lütfen benzersiz bir e-posta adresi sağlayın."
 "IPLimit" = "IP Limiti"
+"deviceLimit" = "Cihaz Limiti"
+"deviceLimitDesc" = "Bu hesabın aboneliğini kaç cihaz alabilir. 0 = sınırsız. Bağlantı anındaki adresleri değil, abonelik alınırken istemci uygulamalarını sayar."
 "IPLimitDesc" = "Sayının aşılması durumunda gelen devre dışı bırakılır. (0 = devre dışı)"
 "IPLimitlog" = "IP Günlüğü"
 "IPLimitlogDesc" = "IP geçmiş günlüğü. (devre dışı bırakıldıktan sonra gelini etkinleştirmek için günlüğü temizleyin)"

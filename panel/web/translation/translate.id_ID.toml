@@ -330,6 +330,8 @@
 "email" = "Email"
 "emailDesc" = "Harap berikan alamat email yang unik."
 "IPLimit" = "Batas IP"
+"deviceLimit" = "Batas Perangkat"
+"deviceLimitDesc" = "Berapa banyak perangkat yang boleh mengambil langganan akun ini. 0 = tanpa batas. Menghitung aplikasi klien saat mengambil langganan, bukan alamat saat menyambung."
 "IPLimitDesc" = "Menonaktifkan masuk jika jumlah melebihi nilai yang ditetapkan. (0 = nonaktif)"
 "IPLimitlog" = "Log IP"
 "IPLimitlogDesc" = "Log histori IP. (untuk mengaktifkan masuk setelah menonaktifkan, hapus log)"

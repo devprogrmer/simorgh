@@ -473,6 +473,8 @@
 "email" = "Email"
 "emailDesc" = "Please provide a unique email address."
 "IPLimit" = "IP Limit"
+"deviceLimit" = "Device Limit"
+"deviceLimitDesc" = "How many devices may fetch this account's subscription. 0 = unlimited. Counts client apps at subscription time, not addresses at connection time, so devices behind one NAT still count separately."
 "IPLimitDesc" = "Disables inbound if the count exceeds the set value. (0 = disable)"
 "IPLimitlog" = "IP Log"
 "IPLimitlogDesc" = "The IPs history log. (to enable inbound after disabling, clear the log)"

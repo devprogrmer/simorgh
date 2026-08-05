@@ -330,6 +330,8 @@
 "email" = "Email"
 "emailDesc" = "Vui lòng cung cấp một địa chỉ email duy nhất."
 "IPLimit" = "Giới hạn IP"
+"deviceLimit" = "Giới hạn thiết bị"
+"deviceLimitDesc" = "Bao nhiêu thiết bị có thể lấy đăng ký của tài khoản này. 0 = không giới hạn. Đếm ứng dụng khách khi lấy đăng ký, không phải địa chỉ khi kết nối."
 "IPLimitDesc" = "Vô hiệu hóa điểm vào nếu số lượng vượt quá giá trị đã nhập (nhập 0 để vô hiệu hóa giới hạn IP)."
 "IPLimitlog" = "Lịch sử IP"
 "IPLimitlogDesc" = "Lịch sử đăng nhập IP (trước khi kích hoạt điểm vào sau khi bị vô hiệu hóa bởi giới hạn IP, bạn nên xóa lịch sử)."

@@ -330,6 +330,8 @@
 "email" = "電子郵件"
 "emailDesc" = "電子郵件必須完全唯一"
 "IPLimit" = "IP 限制"
+"deviceLimit" = "裝置限制"
+"deviceLimitDesc" = "可取得此帳號訂閱的裝置數量。0 表示不限。統計取得訂閱時的用戶端應用程式，而非連線時的位址。"
 "IPLimitDesc" = "如果數量超過設定值，則禁用入站流量。（0 = 禁用）"
 "IPLimitlog" = "IP 日誌"
 "IPLimitlogDesc" = "IP 歷史日誌（要啟用被禁用的入站流量，請清除日誌）"

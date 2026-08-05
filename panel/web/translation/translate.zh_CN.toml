@@ -330,6 +330,8 @@
 "email" = "电子邮件"
 "emailDesc" = "电子邮件必须完全唯一"
 "IPLimit" = "IP 限制"
+"deviceLimit" = "设备限制"
+"deviceLimitDesc" = "可获取此账号订阅的设备数量。0 表示不限。统计获取订阅时的客户端应用，而非连接时的地址。"
 "IPLimitDesc" = "如果数量超过设置值，则禁用入站流量。（0 = 禁用）"
 "IPLimitlog" = "IP 日志"
 "IPLimitlogDesc" = "IP 历史日志（要启用被禁用的入站流量，请清除日志）"

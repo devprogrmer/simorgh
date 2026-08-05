@@ -3207,10 +3207,19 @@ Inbound.ClientBase = class extends XrayCommonClass {
         reset = 0,
         created_at = undefined,
         updated_at = undefined,
+        // Appended at the END of the parameter list on purpose. Every protocol
+        // subclass calls super() with a positional spread of commonArgsFromJson,
+        // so inserting anywhere else would silently shift each following field
+        // into the wrong property across a dozen client types.
+        limitDevices = 0,
     ) {
         super();
         this.email = email;
         this.limitIp = limitIp;
+        // How many DEVICES may fetch this account's subscription; 0 = unlimited.
+        // Distinct from limitIp, which counts source addresses at connection
+        // time and cannot see past a NAT.
+        this.limitDevices = limitDevices;
         this.totalGB = totalGB;
         this.expiryTime = expiryTime;
         this.enable = enable;
@@ -3235,6 +3244,7 @@ Inbound.ClientBase = class extends XrayCommonClass {
             json.reset,
             json.created_at,
             json.updated_at,
+            json.limitDevices,
         ];
     }
 
@@ -3242,6 +3252,7 @@ Inbound.ClientBase = class extends XrayCommonClass {
         return {
             email: this.email,
             limitIp: this.limitIp,
+            limitDevices: this.limitDevices,
             totalGB: this.totalGB,
             expiryTime: this.expiryTime,
             enable: this.enable,

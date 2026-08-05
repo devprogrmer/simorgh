@@ -330,6 +330,8 @@
 "email" = "Email"
 "emailDesc" = "Por favor, forneça um endereço de e-mail único."
 "IPLimit" = "Limite de IP"
+"deviceLimit" = "Limite de dispositivos"
+"deviceLimitDesc" = "Quantos dispositivos podem obter a assinatura desta conta. 0 = ilimitado. Conta aplicativos cliente ao obter a assinatura, não endereços ao conectar."
 "IPLimitDesc" = "Desativa o inbound se o número ultrapassar o valor definido. (0 = desativar)"
 "IPLimitlog" = "Log de IP"
 "IPLimitlogDesc" = "O histórico de IPs. (para ativar o inbound após a desativação, limpe o log)"

@@ -330,6 +330,8 @@
 "email" = "Email"
 "emailDesc" = "Por favor proporciona una dirección de correo electrónico única."
 "IPLimit" = "Límite de IP"
+"deviceLimit" = "Límite de dispositivos"
+"deviceLimitDesc" = "Cuántos dispositivos pueden obtener la suscripción de esta cuenta. 0 = sin límite. Cuenta aplicaciones cliente al obtener la suscripción, no direcciones al conectar."
 "IPLimitDesc" = "Desactiva la entrada si la cantidad supera el valor ingresado (ingresa 0 para desactivar el límite de IP)."
 "IPLimitlog" = "Registro de IP"
 "IPLimitlogDesc" = "Registro de historial de IPs (antes de habilitar la entrada después de que haya sido desactivada por el límite de IP, debes borrar el registro)."

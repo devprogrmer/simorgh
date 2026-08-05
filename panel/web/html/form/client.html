@@ -212,6 +212,29 @@
             min="0"
         ></a-input-number>
     </a-form-item>
+    <!--
+        Device limit. Sits beside the IP limit because operators reach for them
+        for the same reason, but they are NOT the same control and the tooltip
+        says so: this counts client apps at subscription time, the one above
+        counts source addresses at connection time and cannot see past a NAT.
+        Shown unconditionally rather than behind app.ipLimitEnable, since it
+        needs no patched core -- the panel enforces it itself.
+    -->
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    <span>{{ i18n "pages.inbounds.deviceLimitDesc"}}</span>
+                </template>
+                <span>{{ i18n "pages.inbounds.deviceLimit"}} </span>
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-input-number
+            v-model.number="client.limitDevices"
+            min="0"
+        ></a-input-number>
+    </a-form-item>
     <a-form-item
         v-if="app.ipLimitEnable && client.limitIp > 0 && client.email && isEdit"
     >
