@@ -584,11 +584,135 @@ _build_panel_from_source() {
     return 0
 }
 
+# _issue_cert gets a real certificate for $1 and points the panel at it.
+#
+# acme.sh comes out of the panel binary rather than off the internet. The
+# upstream flow ran `curl https://get.acme.sh | sh`, which fails on exactly the
+# hosts this project targets and left the panel on plain HTTP with a one-line
+# "skipping real SSL" -- a security downgrade delivered as a log message. The
+# client is embedded, so this works with no egress to get.acme.sh at all.
+_issue_cert() {
+    local domain="$1" email="$2"
+    local acme_dir="$DATA_DIR/acme" acme="$DATA_DIR/acme/acme.sh"
+    local cert_dir="/usr/local/etc/simorgh-panel/cert/$domain"
+
+    mkdir -p "$acme_dir" "$cert_dir"
+    if ! "$PANEL_BIN" install-acme "$acme" >>"$LOG_FILE" 2>&1; then
+        echo -e "  ${R}Could not unpack the bundled ACME client.${NC}"; return 1
+    fi
+    "$PANEL_BIN" acme-deps >>"$LOG_FILE" 2>&1 || true
+
+    # Port 80 has to be free for the HTTP-01 challenge, and something already
+    # holding it is the single most common reason issuing fails. Said plainly
+    # here rather than left to be decoded from acme.sh's output.
+    if ss -lnt 2>/dev/null | awk '{print $4}' | grep -qE ':80$'; then
+        echo -e "  ${Y}Something is already listening on port 80."
+        echo -e "  Let's Encrypt needs it free to verify the domain. Stop that"
+        echo -e "  service and retry, or use option 2 (self-signed) instead.${NC}"
+        return 1
+    fi
+
+    echo -e "  ${Y}Requesting a certificate for $domain...${NC}"
+    if ! "$acme" --issue --standalone -d "$domain" \
+            --home "$acme_dir" --accountemail "$email" \
+            --server letsencrypt 2>&1 | tail -15; then
+        echo -e "  ${R}Issuing failed. The panel stays on plain HTTP.${NC}"
+        echo -e "  ${DIM}Retry later with:  simorgh $SCRIPT_NAME  (panel menu)${NC}"
+        return 1
+    fi
+
+    # --install-cert is what makes renewal work: acme.sh records where to copy
+    # the files and repeats it every 60 days on its own. Copying by hand here
+    # would produce a certificate that silently expires.
+    if ! "$acme" --install-cert -d "$domain" --home "$acme_dir" \
+            --key-file "$cert_dir/privkey.pem" \
+            --fullchain-file "$cert_dir/fullchain.pem" \
+            --reloadcmd "systemctl restart $PANEL_SERVICE" >>"$LOG_FILE" 2>&1; then
+        echo -e "  ${R}Certificate issued but installing it failed.${NC}"; return 1
+    fi
+
+    if "$PANEL_BIN" cert -webCert "$cert_dir/fullchain.pem" \
+                         -webCertKey "$cert_dir/privkey.pem"; then
+        echo -e "  ${G}HTTPS is on for $domain, and renews automatically.${NC}"
+    else
+        echo -e "  ${R}Could not point the panel at the new certificate.${NC}"; return 1
+    fi
+}
+
+# _panel_https asks how the panel should be reached and sets it up.
+#
+# This is asked rather than assumed because the four answers need genuinely
+# different setups, and picking wrong is not cosmetic:
+#
+#   - Over plain HTTP, the login password crosses the network in clear text.
+#     Anyone on the path reads it, and the panel it opens administers every
+#     server and every customer.
+#   - A real certificate needs a domain that already points here, and issuing
+#     one needs port 80 free for the challenge. Neither can be guessed.
+#
+# So the operator is asked once, at the moment they can act on it, instead of
+# discovering later that they have been logging in over plain HTTP for a month.
+_panel_https() {
+    echo
+    echo -e "  ${BOLD}How should the panel be reached?${NC}"
+    echo -e "  ${DIM}Anything without HTTPS sends your login password in clear text.${NC}"
+    echo
+    echo -e "    ${W}1${NC}  IP, no HTTPS          ${DIM}- quickest, password sent in the clear${NC}"
+    echo -e "    ${W}2${NC}  IP, self-signed       ${DIM}- encrypted; browser shows a warning you click past${NC}"
+    echo -e "    ${W}3${NC}  Domain, real cert     ${DIM}- Let's Encrypt; needs the domain pointing here${NC}"
+    echo -e "    ${W}4${NC}  Domain, no HTTPS      ${DIM}- not recommended${NC}"
+    echo
+    local choice; choice="$(ask 'Choose [1-4]' '2')"
+
+    case "$choice" in
+        2)
+            echo -e "  ${Y}Generating a self-signed certificate...${NC}"
+            if "$PANEL_BIN" cert -selfsign; then
+                echo -e "  ${G}Done. Your browser will warn once; that is expected for a"
+                echo -e "  self-signed certificate, and the connection is still encrypted.${NC}"
+            else
+                echo -e "  ${R}Could not generate one. The panel stays on plain HTTP.${NC}"
+            fi
+            ;;
+        3)
+            local domain email
+            domain="$(ask 'Domain (must already point at this server)' '')"
+            if [ -z "$domain" ]; then
+                echo -e "  ${Y}No domain given - skipping.${NC}"; return
+            fi
+            # Checked before spending a certificate attempt: Let's Encrypt rate
+            # limits failures, so a typo now costs more than a lookup.
+            local here there
+            here="$(curl -fsS --max-time 15 https://api.ipify.org 2>/dev/null || true)"
+            there="$(getent hosts "$domain" 2>/dev/null | awk '{print $1}' | head -1)"
+            if [ -n "$here" ] && [ -n "$there" ] && [ "$here" != "$there" ]; then
+                echo -e "  ${Y}Warning: $domain resolves to $there, but this server is $here."
+                echo -e "  Issuing will fail until DNS points here.${NC}"
+                [ "$(ask 'Try anyway? [y/n]' 'n')" != "y" ] && return
+            elif [ -z "$there" ]; then
+                echo -e "  ${Y}Warning: $domain does not resolve yet.${NC}"
+                [ "$(ask 'Try anyway? [y/n]' 'n')" != "y" ] && return
+            fi
+            email="$(ask 'Email for expiry notices' "admin@$domain")"
+            _issue_cert "$domain" "$email"
+            ;;
+        4|1)
+            echo -e "  ${Y}Leaving the panel on plain HTTP.${NC}"
+            echo -e "  ${DIM}Your password crosses the network in clear text. You can add a"
+            echo -e "  certificate later with:  simorgh-panel cert -selfsign${NC}"
+            ;;
+        *)
+            echo -e "  ${DIM}Not understood - leaving the panel on plain HTTP.${NC}"
+            ;;
+    esac
+}
+
 # _panel_post_install is everything after a binary exists, whichever way it got
 # there. Shared so the downloaded and the compiled path cannot drift into
 # configuring the panel differently.
 _panel_post_install() {
     echo -e "  ${Y}Installing the service...${NC}"
+    _PANEL_JUST_INSTALLED=1
     if ! "$PANEL_BIN" --systemd; then
         echo -e "  ${R}[ERROR] Could not install the panel service.${NC}"
         pause; return 1
@@ -603,6 +727,8 @@ _panel_post_install() {
     if [ "$(ask 'Randomise the port, URL path and login? (recommended) [y/n]' 'y')" = "y" ]; then
         "$PANEL_BIN" --random || true
     fi
+
+    _panel_https
 
     echo
     echo -e "  ${G}${BOLD}Panel installed.${NC}"
