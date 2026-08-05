@@ -33,6 +33,9 @@ var defaultValueMap = map[string]string{
 	"webKeyFile":                  "",
 	"secret":                      random.Seq(32),
 	"webBasePath":                 "/",
+	// Empty on purpose: no reseller path configured means one shared panel,
+	// which is exactly how every install behaved before this setting existed.
+	"resellerBasePath":            "",
 	"sessionMaxAge":               "360",
 	"pageSize":                    "25",
 	"expireDiff":                  "0",

@@ -67,6 +67,17 @@ var knownMissing = keySet(
 	"pages.index.panelLocation", "pages.index.panelLocationError",
 	"pages.index.virtContainer",
 
+	// The tunnel form's strings, English-only like the rest of the Core page.
+	// Listed here rather than translated into twelve locales because every
+	// other string on this page is in the same state, and translating one card
+	// while its neighbours stay English reads worse than a consistently
+	// English page.
+	"pages.core.tunnelTitle", "pages.core.tunnelSide", "pages.core.tunnelSideClient",
+	"pages.core.tunnelSideServer", "pages.core.tunnelMode", "pages.core.tunnelTransport",
+	"pages.core.tunnelRemote", "pages.core.tunnelRemoteDesc", "pages.core.tunnelPassword",
+	"pages.core.tunnelLocalPort", "pages.core.tunnelBind", "pages.core.tunnelBindDesc",
+	"pages.core.tunnelTargetHost", "pages.core.tunnelTargetPort", "pages.core.tunnelFec",
+
 	"pages.core.absent", "pages.core.actions", "pages.core.consoleTitle",
 	"pages.core.cores", "pages.core.disabled", "pages.core.editConfig",
 	"pages.core.enabled", "pages.core.hideLog", "pages.core.inbounds",

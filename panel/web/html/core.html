@@ -100,6 +100,122 @@
             </a-alert>
           </a-col>
 
+          <!--
+            The Simorgh tunnel's settings.
+
+            Here rather than under Panel Settings because its status, start,
+            stop and logs are already on this page: it is a core like the
+            others, and putting its configuration somewhere else would make it
+            the one exception an operator has to go looking for.
+          -->
+          <a-col :span="24">
+            <a-card class="core-card" :title="'{{ i18n "pages.core.tunnelTitle" }}'">
+              <template #extra>
+                <a-switch v-model="tunnel.enable" @change="saveTunnel"></a-switch>
+              </template>
+
+              <a-form layout="vertical">
+                <a-row :gutter="16">
+                  <a-col :xs="24" :md="8">
+                    <a-form-item label='{{ i18n "pages.core.tunnelSide" }}'>
+                      <a-select v-model="tunnel.operatingMode">
+                        <!-- The Iranian end dials out; the foreign end waits. -->
+                        <a-select-option value="client">{{ i18n "pages.core.tunnelSideClient" }}</a-select-option>
+                        <a-select-option value="server">{{ i18n "pages.core.tunnelSideServer" }}</a-select-option>
+                      </a-select>
+                    </a-form-item>
+                  </a-col>
+                  <a-col :xs="24" :md="8">
+                    <a-form-item label='{{ i18n "pages.core.tunnelMode" }}'>
+                      <a-select v-model="tunnel.mode">
+                        <a-select-option value="forward">forward</a-select-option>
+                        <a-select-option value="tun">tun</a-select-option>
+                      </a-select>
+                    </a-form-item>
+                  </a-col>
+                  <a-col :xs="24" :md="8">
+                    <a-form-item label='{{ i18n "pages.core.tunnelTransport" }}'>
+                      <a-select v-model="tunnel.transport">
+                        <a-select-option value="icmp">icmp</a-select-option>
+                        <a-select-option value="udp">udp</a-select-option>
+                        <!-- auto tries icmp then udp; a server has nothing to
+                             try, so it is client-only and the API refuses it
+                             elsewhere. -->
+                        <a-select-option value="auto" :disabled="tunnel.operatingMode !== 'client'">auto</a-select-option>
+                      </a-select>
+                    </a-form-item>
+                  </a-col>
+                </a-row>
+
+                <a-form-item v-if="tunnel.operatingMode === 'client'">
+                  <template slot="label">
+                    <a-tooltip>
+                      <template slot="title">{{ i18n "pages.core.tunnelRemoteDesc" }}</template>
+                      <span>{{ i18n "pages.core.tunnelRemote" }} <a-icon type="question-circle"></a-icon></span>
+                    </a-tooltip>
+                  </template>
+                  <a-input v-model="tunnel.remoteIp" placeholder="203.0.113.10, 198.51.100.7"></a-input>
+                </a-form-item>
+
+                <a-row :gutter="16">
+                  <a-col :xs="24" :md="12">
+                    <a-form-item label='{{ i18n "pages.core.tunnelPassword" }}'>
+                      <!-- Never prefilled: the API does not return it. Left
+                           empty on save, the stored one is kept, so editing the
+                           MTU cannot blank a secret the form never showed. -->
+                      <a-input-password v-model="tunnel.password"
+                                        :placeholder="tunnel.passwordSet ? '••••••••' : ''"></a-input-password>
+                    </a-form-item>
+                  </a-col>
+                  <a-col :xs="12" :md="6">
+                    <a-form-item label="MTU">
+                      <a-input-number v-model.number="tunnel.mtu" :min="576" :max="9000" style="width:100%"></a-input-number>
+                    </a-form-item>
+                  </a-col>
+                  <a-col :xs="12" :md="6">
+                    <a-form-item label='{{ i18n "pages.core.tunnelLocalPort" }}'>
+                      <a-input-number v-model.number="tunnel.udpPort" :min="1" :max="65535" style="width:100%"></a-input-number>
+                    </a-form-item>
+                  </a-col>
+                </a-row>
+
+                <a-form-item v-if="tunnel.operatingMode === 'client'">
+                  <template slot="label">
+                    <a-tooltip>
+                      <!-- The single most common setup mistake: the default of
+                           127.0.0.1 makes the tunnel reachable only from the
+                           server itself, and nothing in the logs says so. -->
+                      <template slot="title">{{ i18n "pages.core.tunnelBindDesc" }}</template>
+                      <span>{{ i18n "pages.core.tunnelBind" }} <a-icon type="question-circle"></a-icon></span>
+                    </a-tooltip>
+                  </template>
+                  <a-input v-model="tunnel.forwardBind" placeholder="0.0.0.0"></a-input>
+                </a-form-item>
+
+                <a-row :gutter="16" v-if="tunnel.mode === 'forward' && tunnel.operatingMode === 'server'">
+                  <a-col :xs="16">
+                    <a-form-item label='{{ i18n "pages.core.tunnelTargetHost" }}'>
+                      <a-input v-model="tunnel.targetHost" placeholder="127.0.0.1"></a-input>
+                    </a-form-item>
+                  </a-col>
+                  <a-col :xs="8">
+                    <a-form-item label='{{ i18n "pages.core.tunnelTargetPort" }}'>
+                      <a-input-number v-model.number="tunnel.targetPort" :min="1" :max="65535" style="width:100%"></a-input-number>
+                    </a-form-item>
+                  </a-col>
+                </a-row>
+
+                <a-form-item>
+                  <a-checkbox v-model="tunnel.fecEnable">{{ i18n "pages.core.tunnelFec" }}</a-checkbox>
+                </a-form-item>
+
+                <a-button type="primary" :loading="tunnelSaving" @click="saveTunnel">
+                  {{ i18n "sure" }}
+                </a-button>
+              </a-form>
+            </a-card>
+          </a-col>
+
           <!-- Per-core cards -->
           <a-col :span="24" v-if="provisioned">
             <a-row type="flex" :gutter="[16, 16]">
@@ -481,6 +597,14 @@
       provisioned: false,
       missingProtocols: [],
       cores: [],
+      // Defaults match the server's, so the form is usable before the first
+      // fetch lands rather than flashing empty selects.
+      tunnel: {
+        enable: false, mode: 'forward', operatingMode: 'client', transport: 'icmp',
+        remoteIp: '', password: '', passwordSet: false, udpPort: 8443, mtu: 1400,
+        fecEnable: true, forwardBind: '0.0.0.0', targetHost: '127.0.0.1', targetPort: 0,
+      },
+      tunnelSaving: false,
       system: { modules: [] },
       provisionRunning: false,
       provisionDone: false,
@@ -520,6 +644,28 @@
       logsLive: false,
     },
     methods: {
+      async loadTunnel() {
+        const msg = await HttpUtil.get('/panel/core/tunnel');
+        if (msg.success && msg.obj) {
+          // Merged over the defaults rather than replacing them, so a field the
+          // server has never stored keeps a usable value instead of becoming
+          // undefined and breaking the number inputs.
+          this.tunnel = Object.assign({}, this.tunnel, msg.obj);
+          // The password is never returned; passwordSet says whether one exists.
+          this.tunnel.password = '';
+        }
+      },
+
+      async saveTunnel() {
+        this.tunnelSaving = true;
+        try {
+          const msg = await HttpUtil.post('/panel/core/tunnel', this.tunnel);
+          if (msg.success) await this.loadTunnel();
+        } finally {
+          this.tunnelSaving = false;
+        }
+      },
+
       async loadStatus(showSpin) {
         if (showSpin) this.spinning = true;
         const msg = await HttpUtil.get('/panel/core/status');
@@ -995,6 +1141,9 @@
     mounted() {
       this.loadStatus(true);
       this.loadCatalog();
+      // Once, not on the 5s poll: this is operator-entered configuration, and
+      // refetching it under someone mid-edit would overwrite what they typed.
+      this.loadTunnel();
       this.pollTimer = setInterval(() => this.loadStatus(false), 5000);
     },
     beforeDestroy() {

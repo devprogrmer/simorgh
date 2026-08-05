@@ -27,6 +27,11 @@ type AllSetting struct {
 	WebCertFile   string `json:"webCertFile" form:"webCertFile"`     // Path to SSL certificate file for web server
 	WebKeyFile    string `json:"webKeyFile" form:"webKeyFile"`       // Path to SSL private key file for web server
 	WebBasePath   string `json:"webBasePath" form:"webBasePath"`     // Base path for web panel URLs
+	// ResellerBasePath is where resellers log in, kept separate from the admin
+	// panel's path. Empty means one shared panel, which is what every install
+	// had before this existed. See controller/reseller_path.go for why the
+	// separation is blast radius rather than an access control.
+	ResellerBasePath string `json:"resellerBasePath" form:"resellerBasePath"`
 	SessionMaxAge int    `json:"sessionMaxAge" form:"sessionMaxAge"` // Session maximum age in minutes
 
 	// UI settings

@@ -12,7 +12,8 @@ import (
 // CoreController exposes status and control for the backend "cores"
 // (Xray, L2TP/IPsec, PPTP, OpenVPN, RADIUS) shown in the Core Settings panel.
 type CoreController struct {
-	coreService service.CoreService
+	coreService   service.CoreService
+	tunnelService service.TunnelService
 }
 
 // NewCoreController creates a new CoreController and initializes its routes.
@@ -40,6 +41,43 @@ func (a *CoreController) initRouter(g *gin.RouterGroup) {
 	g.POST("/restart-all", a.restartAll)
 	g.POST("/stop/:core", a.stop)
 	g.GET("/logs/:core", a.logs)
+
+	// The Simorgh tunnel's own configuration. It lives under /core because that
+	// is where its status, start, stop and logs already are -- it is a core like
+	// the others, and splitting its settings somewhere else would make it the
+	// one exception an operator has to remember.
+	g.GET("/tunnel", a.tunnelConfig)
+	g.POST("/tunnel", a.saveTunnelConfig)
+}
+
+func (a *CoreController) tunnelConfig(c *gin.Context) {
+	jsonObj(c, a.tunnelService.MaskedConfig(), nil)
+}
+
+func (a *CoreController) saveTunnelConfig(c *gin.Context) {
+	var cfg service.TunnelConfig
+	if err := c.ShouldBindJSON(&cfg); err != nil {
+		jsonMsg(c, "Tunnel", err)
+		return
+	}
+	if err := a.tunnelService.SaveConfig(cfg); err != nil {
+		jsonMsg(c, "Tunnel", err)
+		return
+	}
+	// Applied immediately when enabled, because saving a tunnel config and then
+	// having to find the restart button is a step that only exists to be
+	// forgotten. Restart failures are reported but do not fail the save: the
+	// configuration IS stored, and telling the operator otherwise would have
+	// them re-enter it.
+	if cfg.Enable {
+		if err := a.tunnelService.Restart(); err != nil {
+			jsonMsg(c, "Tunnel saved, but it did not start", err)
+			return
+		}
+	} else {
+		_ = a.tunnelService.Stop()
+	}
+	jsonMsg(c, "Tunnel", nil)
 }
 
 // status returns the status of all cores plus the host/kernel system status and
