@@ -79,10 +79,36 @@ pause() { read -r -p "  Press Enter to continue..." _; }
 #               should fail fast and let the next mirror be tried.
 _dl() {
     local url="$1" out="$2"
-    curl -fL --http1.1 -C - \
+    # SIMORGH_PROXY routes every fetch through a proxy the operator already has
+    # working. On a filtered link that is far more reliable than any mirror this
+    # script could guess at, because they can test it and this cannot:
+    #   SIMORGH_PROXY=socks5h://127.0.0.1:10808 sudo ./install.sh
+    local proxy=(); [ -n "${SIMORGH_PROXY:-}" ] && proxy=(--proxy "$SIMORGH_PROXY")
+    curl -fL --http1.1 -C - "${proxy[@]}" \
          --retry 5 --retry-delay 3 --retry-all-errors \
          --speed-limit 1024 --speed-time 60 \
          --progress-bar -o "$out" "$url" 2>&1 >/dev/null
+}
+
+# _pick_source probes each candidate and echoes the first that actually moves
+# data, rather than committing to a long download and finding out at 0.4%.
+#
+# Reachability is not the test -- a source can answer a HEAD in a second and
+# then deliver at 2 KB/s, which is what "stuck at 0.4%" actually was. So this
+# measures THROUGHPUT: fetch a small range with a hard timeout, and a source
+# that cannot manage even that is not going to deliver 130 MB.
+_pick_source() {
+    local url probe
+    local proxy=(); [ -n "${SIMORGH_PROXY:-}" ] && proxy=(--proxy "$SIMORGH_PROXY")
+    for url in "$@"; do
+        probe="$(curl -fL --http1.1 "${proxy[@]}" --max-time 12 \
+                   -r 0-262143 -o /dev/null -w '%{speed_download}' "$url" 2>/dev/null || echo 0)"
+        # 20 KB/s floor: below that a 130 MB file takes over two hours.
+        if [ "${probe%.*}" -gt 20000 ] 2>/dev/null; then
+            echo "$url"; return 0
+        fi
+    done
+    return 1
 }
 
 # ---------------------------------------------------------------------------
@@ -458,9 +484,20 @@ _install_panel_binary() {
     local file="simorgh-panel-linux-$arch"
     local tmp; tmp="$(mktemp -d)"
 
+    # Release assets are the hard case. github.com itself is usually reachable
+    # from the networks this project is for, but the download REDIRECTS to
+    # objects.githubusercontent.com, which frequently is not -- it answers, then
+    # delivers at a couple of KB/s. That is what "stuck at 0.4%" was, and no
+    # amount of retrying fixes a link that is technically working.
+    #
+    # So: several proxies, and the one that actually moves data wins. They are
+    # tried in this order but ORDER DOES NOT DECIDE -- _pick_source measures
+    # throughput and skips anything that cannot manage 20 KB/s.
     local sources="$base/$file"
     if [ "${SIMORGH_NO_MIRRORS:-0}" != "1" ]; then
-        sources="$sources https://ghproxy.net/$base/$file https://ghfast.top/$base/$file"
+        for m in "${SIMORGH_MIRRORS:-https://gh-proxy.com https://ghproxy.net https://ghfast.top https://gh.llkk.cc https://hub.gitmirror.com}"; do
+            for p in $m; do sources="$sources $p/$base/$file"; done
+        done
     fi
 
     # The release's own checksums file, so a mirror can only fail the check and
@@ -470,6 +507,21 @@ _install_panel_binary() {
         | grep " $file\$" | grep -o '^[a-f0-9]\{64\}' | head -1 || true)"
 
     echo -e "  ${Y}Looking for a prebuilt panel ($arch)...${NC}"
+    echo -e "  ${DIM}Testing which source is actually fast from here...${NC}"
+
+    # Probe first, so a source that answers but crawls is skipped in seconds
+    # instead of being discovered a hundred megabytes later.
+    local fast; fast="$(_pick_source $sources || true)"
+    if [ -n "$fast" ]; then
+        echo -e "  ${G}  using ${fast%%/releases*}${NC}"
+        sources="$fast $sources"   # tried first; the rest stay as fallback
+    else
+        echo -e "  ${Y}  none of them are fast from here - building from source instead.${NC}"
+        echo -e "  ${DIM}  If you have a proxy, this is much quicker:"
+        echo -e "    SIMORGH_PROXY=socks5h://127.0.0.1:10808 sudo ./install.sh${NC}"
+        rm -rf "$tmp"; return 1
+    fi
+
     local url
     for url in $sources; do
         _dl "$url" "$tmp/$file" || { rm -f "$tmp/$file"; continue; }
