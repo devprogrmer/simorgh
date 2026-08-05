@@ -18,7 +18,8 @@ import (
 // class — the same bar as the database export, the panel binary and a host
 // reboot. A permission bit must not be enough to reach it.
 type NodeController struct {
-	nodeService service.NodeService
+	nodeService      service.NodeService
+	placementService service.PlacementService
 }
 
 func NewNodeController(g *gin.RouterGroup) *NodeController {
@@ -37,6 +38,69 @@ func (a *NodeController) initRouter(g *gin.RouterGroup) {
 	g.GET("/status/:id", a.status)
 	g.GET("/logs/:id/:core", a.logs)
 	g.POST("/provision/:id", a.provision)
+
+	// Placements: which machines serve a given inbound. Under the same
+	// super-admin gate as the rest, because choosing where an inbound runs is
+	// choosing which machine receives its credentials.
+	g.GET("/placements/:inboundId", a.listPlacements)
+	g.POST("/placements/:inboundId", a.setPlacements)
+	g.POST("/placement/:id", a.updatePlacement)
+}
+
+func (a *NodeController) listPlacements(c *gin.Context) {
+	inboundId, err := strconv.Atoi(c.Param("inboundId"))
+	if err != nil {
+		jsonMsg(c, "Placements", err)
+		return
+	}
+	list, err := a.placementService.ListForInbound(inboundId)
+	if err != nil {
+		jsonMsg(c, "Placements", err)
+		return
+	}
+	jsonObj(c, list, nil)
+}
+
+func (a *NodeController) setPlacements(c *gin.Context) {
+	inboundId, err := strconv.Atoi(c.Param("inboundId"))
+	if err != nil {
+		jsonMsg(c, "Placements", err)
+		return
+	}
+	var body struct {
+		NodeIds []int `json:"nodeIds"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		jsonMsg(c, "Placements", err)
+		return
+	}
+	if err := a.placementService.SetForInbound(inboundId, body.NodeIds); err != nil {
+		jsonMsg(c, "Placements", err)
+		return
+	}
+	jsonMsg(c, "Placements", nil)
+}
+
+func (a *NodeController) updatePlacement(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		jsonMsg(c, "Placement", err)
+		return
+	}
+	var body struct {
+		Port   int    `json:"port"`
+		Listen string `json:"listen"`
+		Enable bool   `json:"enable"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		jsonMsg(c, "Placement", err)
+		return
+	}
+	if err := a.placementService.UpdatePlacement(id, body.Port, body.Listen, body.Enable); err != nil {
+		jsonMsg(c, "Placement", err)
+		return
+	}
+	jsonMsg(c, "Placement", nil)
 }
 
 func (a *NodeController) list(c *gin.Context) {
