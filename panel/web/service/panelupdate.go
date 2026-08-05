@@ -41,24 +41,42 @@ var (
 	panelUpdateCancel   context.CancelFunc
 )
 
-// Panel self-update. The panel binary ships as a single GitHub release asset
-// (Sir-MmD/vpn-ui, "vpn-ui-amd64") — the same source deploy.sh installs from — so
+// Panel self-update. The panel binary ships as a single GitHub release asset, so
 // the overview can both check for and apply updates in place.
 //
-// PanelAsset and PanelDownloadURL are exported because `vpn-ui-amd64 update` (the
-// CLI/menu updater in main.go) installs from the very same release asset. It
-// reuses these plus DownloadPanelBinary/IsCompatibleBinary rather than reaching
-// for UpdatePanel: that path ends in restartPanel, whose no-systemd branch
-// syscall.Exec's os.Args back into itself. That is harmless for the panel, but from
-// a CLI process it would re-exec the CLI with its own `update` arguments, in a loop.
-const (
-	panelRepo      = "Sir-MmD/vpn-ui"
-	PanelAsset     = "vpn-ui-amd64"
+// This points at THIS fork, and that is a correctness fix rather than a
+// preference. It used to point at the upstream project it was forked from, which
+// meant the overview advertised upstream's version numbers and "Update Now"
+// would have replaced a Simorgh panel with an upstream vpn-ui build -- silently
+// removing multi-node, the shared quota, device limits and the separated
+// reseller panel, none of which exist upstream, while leaving a database whose
+// schema that binary has never seen.
+//
+// Overridable so a fork of this fork updates from its own releases instead of
+// pulling someone else's binary onto its users' servers.
+//
+// PanelAsset and PanelDownloadURL are exported because the CLI/menu updater in
+// main.go installs from the very same release asset. It reuses these plus
+// DownloadPanelBinary/IsCompatibleBinary rather than reaching for UpdatePanel:
+// that path ends in restartPanel, whose no-systemd branch syscall.Exec's
+// os.Args back into itself. Harmless for the panel, but from a CLI process it
+// would re-exec the CLI with its own `update` arguments, in a loop.
+var (
+	panelRepo = envOr("SIMORGH_UPDATE_REPO", "devprogrmer/simorgh")
+	// The asset name matches what .github/workflows/release.yml publishes.
+	PanelAsset     = "simorgh-panel-linux-" + runtime.GOARCH
 	panelLatestAPI = "https://api.github.com/repos/" + panelRepo + "/releases/latest"
 	// PanelDownloadURL is the release asset both the in-panel updater and the CLI
 	// `update` subcommand download.
 	PanelDownloadURL = "https://github.com/" + panelRepo + "/releases/latest/download/" + PanelAsset
 )
+
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
 
 // PanelUpdateInfo reports the running version vs. the latest published release,
 // plus the release notes the overview shows before an operator commits to

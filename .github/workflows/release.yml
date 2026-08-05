@@ -50,6 +50,43 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu
 
+      # Embed the Xray core and geo files, or the panel ships without the thing
+      # it exists to run.
+      #
+      # corebundle go:embeds core/<goarch>/xray plus the geo data, and the repo
+      # holds only a .gitkeep there so a checkout still compiles. A build that
+      # skips this step produces a panel that installs, starts, and then loops
+      # forever on "fork/exec bin/xray-linux-amd64: no such file or directory"
+      # -- which is what the first published binary did.
+      #
+      # The release archive is used rather than building from source: the
+      # Xray-core submodule build/core/build.sh expects is not in this
+      # repository, and a pinned upstream release is reproducible without it.
+      - name: Embed the Xray core and geo files
+        working-directory: panel
+        env:
+          XRAY_VERSION: v25.9.11
+        run: |
+          set -euo pipefail
+          case "${{ matrix.goarch }}" in
+            amd64) asset=Xray-linux-64.zip ;;
+            arm64) asset=Xray-linux-arm64-v8a.zip ;;
+          esac
+          mkdir -p "corebundle/core/${{ matrix.goarch }}"
+          curl -fsSL --retry 3 -o /tmp/xray.zip \
+            "https://github.com/XTLS/Xray-core/releases/download/${XRAY_VERSION}/${asset}"
+          unzip -o -j /tmp/xray.zip xray -d "corebundle/core/${{ matrix.goarch }}"
+          chmod 0755 "corebundle/core/${{ matrix.goarch }}/xray"
+
+          # The base geo pair only. The country files are ~118 MB and the panel
+          # downloads one on first use when a rule needs it, so embedding them
+          # would triple the release for data most installs never touch.
+          for f in geoip geosite; do
+            curl -fsSL --retry 3 -o "corebundle/core/${f}.dat" \
+              "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/${f}.dat"
+          done
+          ls -la "corebundle/core/${{ matrix.goarch }}" corebundle/core
+
       - name: Build the panel
         working-directory: panel
         env:
