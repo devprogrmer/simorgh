@@ -132,6 +132,39 @@ type CoreService struct {
 	mtprotoService MtprotoService
 	sshService     SshService
 	xrayService    XrayService
+	tunnelService  TunnelService
+}
+
+// tunnelStatus reports the Simorgh tunnel.
+//
+// It is a core like any other here, which is the point: an operator learns one
+// vocabulary and one set of buttons. Unlike the protocol cores it serves no
+// inbounds -- it carries traffic between two servers rather than terminating
+// customers -- so Inbounds stays 0 and Idle means "installed but switched off"
+// rather than "installed but nobody is using it".
+func (s *CoreService) tunnelStatus() CoreStatus {
+	cs := CoreStatus{Name: "tunnel"}
+	if !s.tunnelService.Available() {
+		cs.State = CoreNotInstalled
+		cs.Detail = "simorgh-core binary not installed on this host"
+		return cs
+	}
+	cfg := s.tunnelService.GetConfig()
+	switch {
+	case !cfg.Enable:
+		cs.State = CoreIdle
+		cs.Detail = "configured but not enabled"
+	case s.tunnelService.IsRunning():
+		cs.State = CoreRunning
+		side := "server (abroad)"
+		if cfg.OperatingMode == "client" {
+			side = "client (Iran) -> " + cfg.RemoteIP
+		}
+		cs.Detail = cfg.Mode + " / " + cfg.Transport + " / " + side
+	default:
+		cs.State = CoreStopped
+	}
+	return cs
 }
 
 // --------------------------------------------------------------------------- //
@@ -333,6 +366,7 @@ func (s *CoreService) GetCoresStatus() []CoreStatus {
 		s.mtprotoStatus(),
 		s.sshStatus(),
 		s.radiusStatus(),
+		s.tunnelStatus(),
 	}
 
 	// A core the operator never installed reads as "not installed", whatever the
@@ -843,6 +877,8 @@ func (s *CoreService) ProtocolNeedsSetup(protocol string) bool {
 // RestartCore restarts the daemon(s) for a given core.
 func (s *CoreService) RestartCore(name string) error {
 	switch name {
+	case "tunnel":
+		return s.tunnelService.Restart()
 	case "xray":
 		return s.xrayService.RestartXray(true)
 	case "l2tp":
@@ -895,6 +931,8 @@ func (s *CoreService) RestartAll() error {
 // StopCore stops a core, where stopping is supported.
 func (s *CoreService) StopCore(name string) error {
 	switch name {
+	case "tunnel":
+		return s.tunnelService.Stop()
 	case "xray":
 		return s.xrayService.StopXray()
 	case "l2tp":
@@ -938,6 +976,8 @@ func (s *CoreService) StopCore(name string) error {
 // the panel's in-memory log buffer (their output is routed there).
 func (s *CoreService) CoreLogs(name string) string {
 	switch name {
+	case "tunnel":
+		return s.tunnelService.Logs()
 	case "l2tp":
 		return procMgr.Logs("xl2tpd")
 	case "pptp":
