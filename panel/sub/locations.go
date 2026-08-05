@@ -116,10 +116,16 @@ func locationsFor(inboundId int) []subLocation {
 			loc.Address = n.Address
 			loc.Name = n.Name
 		}
-		// A placement that overrides Listen wins over the node's own address:
-		// it is the more specific statement of where this inbound binds.
-		if p.Listen != "" {
-			loc.Address = p.Listen
+		// Advertise wins over everything else, and is checked last so it does.
+		//
+		// It is what a client DIALS, which is not always where the daemon runs:
+		// in the relay topology the daemon is on a foreign node while customers
+		// connect to an Iranian server that forwards to it. Listen is not
+		// consulted here at all -- that is the daemon's bind address, and a
+		// daemon bound to a private interface behind a relay would otherwise
+		// hand customers an address they cannot reach.
+		if p.Advertise != "" {
+			loc.Address = p.Advertise
 		}
 		locations = append(locations, loc)
 	}

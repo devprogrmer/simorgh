@@ -25,6 +25,7 @@ type Placement struct {
 	Address   string `json:"address"`
 	Port      int    `json:"port"`
 	Listen    string `json:"listen"`
+	Advertise string `json:"advertise"`
 	Enable    bool   `json:"enable"`
 	LastError string `json:"lastError"`
 }
@@ -43,7 +44,8 @@ func (s *PlacementService) ListForInbound(inboundId int) ([]Placement, error) {
 	for _, r := range rows {
 		p := Placement{
 			Id: r.Id, InboundId: r.InboundId, NodeId: r.NodeId,
-			Port: r.Port, Listen: r.Listen, Enable: r.Enable, LastError: r.LastError,
+			Port: r.Port, Listen: r.Listen, Advertise: r.Advertise,
+			Enable: r.Enable, LastError: r.LastError,
 		}
 		var n model.Node
 		if db.First(&n, r.NodeId).Error == nil {
@@ -121,7 +123,11 @@ func (s *PlacementService) SetForInbound(inboundId int, nodeIds []int) error {
 }
 
 // UpdatePlacement changes one placement's own settings.
-func (s *PlacementService) UpdatePlacement(id int, port int, listen string, enable bool) error {
+//
+// advertise is the address customers are given when it differs from where the
+// daemon runs -- the relay topology, where a foreign node's daemon is reached
+// through an Iranian server. Empty means "use the node's own address".
+func (s *PlacementService) UpdatePlacement(id, port int, listen, advertise string, enable bool) error {
 	if port < 0 || port > 65535 {
 		return fmt.Errorf("port %d is not a port", port)
 	}
@@ -131,8 +137,9 @@ func (s *PlacementService) UpdatePlacement(id int, port int, listen string, enab
 			// values from an update: Enable=false and Port=0 (meaning "inherit")
 			// would both be silently dropped, which is the same trap the model's
 			// default tags had.
-			"port":   port,
-			"listen": listen,
-			"enable": enable,
+			"port":      port,
+			"listen":    listen,
+			"advertise": advertise,
+			"enable":    enable,
 		}).Error
 }

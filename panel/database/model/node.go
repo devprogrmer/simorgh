@@ -116,6 +116,25 @@ type InboundNode struct {
 	Port   int    `json:"port" gorm:"default:0"`
 	Listen string `json:"listen"`
 
+	// Advertise is the address customers are given, when it differs from where
+	// the daemon actually runs.
+	//
+	// This exists for the relay topology, which is the common one for Iran: the
+	// VPN daemon runs on a foreign node, but customers connect to an Iranian
+	// server that forwards to it, and the low latency of that first hop is the
+	// entire point. Their config must therefore name the Iranian address while
+	// the panel still manages the daemon on the foreign node.
+	//
+	// Deliberately separate from Listen. Listen is what the daemon BINDS to, on
+	// the machine it runs on; Advertise is what a client DIALS. Overloading one
+	// field for both works right up until an operator needs a daemon bound to a
+	// private interface behind a relay, at which point the two meanings
+	// contradict each other and one of them has to lose.
+	//
+	// Empty means "use the node's own address", which is the direct topology and
+	// stays the default.
+	Advertise string `json:"advertise"`
+
 	// No gorm default, for the reason spelled out on Node.Enable: a default tag
 	// makes GORM drop an explicit false from the INSERT, so "serve this inbound
 	// everywhere except Helsinki" would silently keep serving it in Helsinki.

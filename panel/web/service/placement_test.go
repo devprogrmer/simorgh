@@ -69,7 +69,7 @@ func TestSetPreservesUntouchedPlacements(t *testing.T) {
 			fraId = p.Id
 		}
 	}
-	if err := s.UpdatePlacement(fraId, 51999, "", true); err != nil {
+	if err := s.UpdatePlacement(fraId, 51999, "", "", true); err != nil {
 		t.Fatal(err)
 	}
 
@@ -153,11 +153,11 @@ func TestUpdatePlacementPersistsZeroValues(t *testing.T) {
 	got, _ := s.ListForInbound(inboundId)
 	id := got[0].Id
 
-	if err := s.UpdatePlacement(id, 51999, "10.0.0.1", true); err != nil {
+	if err := s.UpdatePlacement(id, 51999, "10.0.0.1", "185.51.200.77", true); err != nil {
 		t.Fatal(err)
 	}
 	// Now back to "inherit the inbound's port" and disabled.
-	if err := s.UpdatePlacement(id, 0, "", false); err != nil {
+	if err := s.UpdatePlacement(id, 0, "", "", false); err != nil {
 		t.Fatal(err)
 	}
 	got, _ = s.ListForInbound(inboundId)
@@ -169,6 +169,13 @@ func TestUpdatePlacementPersistsZeroValues(t *testing.T) {
 	}
 	if got[0].Listen != "" {
 		t.Errorf("listen was not cleared; got %q", got[0].Listen)
+	}
+	// Clearing the advertised address must stick too: it is how an operator
+	// moves a placement back from the relay topology to direct connection, and
+	// a value that would not clear leaves customers pointed at a relay that is
+	// no longer in front of it.
+	if got[0].Advertise != "" {
+		t.Errorf("advertised address was not cleared; got %q", got[0].Advertise)
 	}
 }
 
@@ -202,7 +209,7 @@ func TestUpdatePlacementRangeChecksPort(t *testing.T) {
 	s, inboundId, localId := placementFixture(t)
 	_ = s.SetForInbound(inboundId, []int{localId})
 	got, _ := s.ListForInbound(inboundId)
-	if err := s.UpdatePlacement(got[0].Id, 99999, "", true); err == nil {
+	if err := s.UpdatePlacement(got[0].Id, 99999, "", "", true); err == nil {
 		t.Fatal("an out-of-range port was accepted")
 	}
 }

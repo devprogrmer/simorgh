@@ -195,6 +195,53 @@ func TestPlacementsPointingAtMissingNodesFallBack(t *testing.T) {
 	}
 }
 
+// The relay topology, which is the common one for Iran: the daemon runs on a
+// foreign node, but customers must be given the Iranian address that forwards to
+// it. Handing them the foreign address instead would bypass the relay entirely
+// -- the customer pays for the low-latency first hop and never uses it.
+func TestAdvertisedAddressWinsOverTheNodesOwn(t *testing.T) {
+	locDB(t)
+	in := mkInbound(t, "wg")
+	database.GetDB().Where("inbound_id = ?", in.Id).Delete(&model.InboundNode{})
+	fra := mkNode(t, "Frankfurt", "203.0.113.10", true)
+
+	if err := database.GetDB().Create(&model.InboundNode{
+		InboundId: in.Id, NodeId: fra.Id, Enable: true,
+		Listen:    "10.0.0.5",     // where the daemon binds, on the foreign box
+		Advertise: "185.51.200.77", // the Iranian relay customers dial
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	locs := locationsFor(in.Id)
+	if len(locs) != 1 {
+		t.Fatalf("got %d locations", len(locs))
+	}
+	if locs[0].Address != "185.51.200.77" {
+		t.Fatalf("customers were given %q; want the advertised relay address", locs[0].Address)
+	}
+	// The label still names the node the daemon runs on, which is what an
+	// operator reading the subscription needs to know.
+	if locs[0].Name != "Frankfurt" {
+		t.Errorf("label = %q; want the node's name", locs[0].Name)
+	}
+}
+
+// Without an advertised address the node's own is used -- the direct topology,
+// and the default.
+func TestNodeAddressUsedWhenNothingIsAdvertised(t *testing.T) {
+	locDB(t)
+	in := mkInbound(t, "wg")
+	database.GetDB().Where("inbound_id = ?", in.Id).Delete(&model.InboundNode{})
+	fra := mkNode(t, "Frankfurt", "203.0.113.10", true)
+	place(t, in.Id, fra.Id, 0)
+
+	locs := locationsFor(in.Id)
+	if locs[0].Address != "203.0.113.10" {
+		t.Fatalf("address = %q; want the node's own", locs[0].Address)
+	}
+}
+
 // An OFFLINE node still ships its configs. Offline means the panel has not
 // reached its control channel for three ticks, which is very often the
 // management path rather than the data path -- the VPN daemons keep serving

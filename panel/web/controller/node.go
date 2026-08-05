@@ -88,15 +88,19 @@ func (a *NodeController) updatePlacement(c *gin.Context) {
 		return
 	}
 	var body struct {
-		Port   int    `json:"port"`
+		Port int    `json:"port"`
 		Listen string `json:"listen"`
-		Enable bool   `json:"enable"`
+		// Advertise is what customers dial when that differs from where the
+		// daemon runs -- the relay topology, where a foreign node is reached
+		// through an Iranian server.
+		Advertise string `json:"advertise"`
+		Enable    bool   `json:"enable"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		jsonMsg(c, "Placement", err)
 		return
 	}
-	if err := a.placementService.UpdatePlacement(id, body.Port, body.Listen, body.Enable); err != nil {
+	if err := a.placementService.UpdatePlacement(id, body.Port, body.Listen, body.Advertise, body.Enable); err != nil {
 		jsonMsg(c, "Placement", err)
 		return
 	}
