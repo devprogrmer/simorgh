@@ -6,6 +6,14 @@
   <meta name="renderer" content="webkit">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="robots" content="noindex,nofollow">
+  <!--
+    The panel had no favicon at all, so every browser tab showed the generic
+    document glyph and an operator running several panels had no way to tell
+    them apart. The SVG mark serves as one directly: it scales to whatever the
+    browser asks for, and its currentColor falls back to the document colour
+    outside the page, which is legible on both light and dark tab bars.
+  -->
+  <link rel="icon" type="image/svg+xml" href="{{ .base_path }}assets/img/logo.svg">
   <link rel="stylesheet" href="{{ .base_path }}assets/ant-design-vue/antd.min.css">
   <link rel="stylesheet" href="{{ .base_path }}assets/css/tokens.css?{{ .cur_ver }}">
   <link rel="stylesheet" href="{{ .base_path }}assets/css/custom.css?{{ .cur_ver }}">

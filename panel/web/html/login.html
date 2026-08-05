@@ -276,7 +276,18 @@ body { background:var(--bg); }
       <div class="lgt-card lgt-rise" ref="card">
 
         <div class="lgt-head">
-          <p class="lgt-brand">[{{ .brand }}]</p>
+          <p class="lgt-brand">
+            <!--
+              The mark inherits --accent from .lgt-brand's colour via
+              currentColor, so it stays in step with the wordmark beside it
+              across all three themes instead of needing its own rule.
+              aria-hidden because the brand name is right there in text; a
+              screen reader announcing it twice is noise, not information.
+            -->
+            <img src="{{ .base_path }}assets/img/logo.svg" alt="" aria-hidden="true"
+                 style="width:1.15em;height:1.15em;vertical-align:-.2em;margin-inline-end:.4em;" />
+            [{{ .brand }}]
+          </p>
           <div class="lgt-pop-wrap">
             <button type="button" class="lgt-gear" ref="gear" @click.stop="settingsOpen = !settingsOpen"
               :aria-expanded="settingsOpen ? 'true' : 'false'" aria-controls="lgt-pop"
