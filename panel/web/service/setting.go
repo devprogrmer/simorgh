@@ -608,6 +608,41 @@ func (s *SettingService) GetBasePath() (string, error) {
 	return basePath, nil
 }
 
+// GetResellerBasePath is the path resellers log in at, kept separate from the
+// admin panel's.
+//
+// The point is blast radius, not secrecy. A reseller's URL is handed to every
+// person who sells for you, and it spreads: pasted into chats, saved in
+// browsers, typed on borrowed machines. Sharing one path with the admin panel
+// means every one of those people knows where the admin login is, so a
+// credential-stuffing run against the panel that administers the whole fleet
+// needs no discovery step at all. Two paths make the admin panel's location
+// something a reseller never learns in the course of normal work.
+//
+// Empty means "not configured", and the reseller path then falls back to the
+// admin one -- which is exactly today's behaviour, so an existing install that
+// never sets this notices no change.
+func (s *SettingService) GetResellerBasePath() (string, error) {
+	p, err := s.getString(resellerBasePathKey)
+	if err != nil || strings.TrimSpace(p) == "" {
+		// A missing key is not an error worth propagating: it is the default.
+		return "", nil
+	}
+	if !strings.HasPrefix(p, "/") {
+		p = "/" + p
+	}
+	if !strings.HasSuffix(p, "/") {
+		p += "/"
+	}
+	return p, nil
+}
+
+func (s *SettingService) SetResellerBasePath(p string) error {
+	return s.setString(resellerBasePathKey, p)
+}
+
+const resellerBasePathKey = "resellerBasePath"
+
 func (s *SettingService) GetTimeLocation() (*time.Location, error) {
 	l, err := s.getString("timeLocation")
 	if err != nil {

@@ -293,11 +293,40 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	// Apply the redirect middleware (`/xui` to `/panel`)
 	engine.Use(middleware.RedirectMiddleware(basePath))
 
+	// Serve the panel on the reseller path too, when one is configured, so both
+	// URLs reach the same handlers. Which panel a caller is SHOWN is then decided
+	// by EnforcePathSeparation below; what they may DO is decided by the
+	// permission middleware, exactly as before. Two routes rather than two
+	// applications, because a second copy of the controller tree is a second
+	// place for an authorization check to be forgotten.
+	resellerBasePath, err := s.settingService.GetResellerBasePath()
+	if err != nil {
+		logger.Warning("reseller base path unreadable, serving one shared panel:", err)
+		resellerBasePath = ""
+	}
+	if resellerBasePath != "" && resellerBasePath != basePath {
+		engine.StaticFS(resellerBasePath+"assets", http.FS(&wrapAssetsFS{FS: assetsFS}))
+	}
+	engine.Use(controller.EnforcePathSeparation(basePath, resellerBasePath))
+
 	g := engine.Group(basePath)
 
 	s.index = controller.NewIndexController(g)
 	s.panel = controller.NewXUIController(g)
 	s.api = controller.NewAPIController(g, s.customGeoService)
+
+	// The same controllers, mounted again on the reseller path. The returned
+	// controllers are discarded on purpose: the fields above hold the admin-path
+	// instances, and these register their own routes as a side effect of
+	// construction. They are stateless request handlers, so a second set costs a
+	// route table entry each and nothing more.
+	if resellerBasePath != "" && resellerBasePath != basePath {
+		rg := engine.Group(resellerBasePath)
+		controller.NewIndexController(rg)
+		controller.NewXUIController(rg)
+		controller.NewAPIController(rg, s.customGeoService)
+		logger.Info("panel: resellers served separately at " + resellerBasePath)
+	}
 
 	// Initialize WebSocket hub
 	s.wsHub = websocket.NewHub()
