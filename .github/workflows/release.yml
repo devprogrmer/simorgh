@@ -37,18 +37,52 @@ jobs:
           go-version-file: panel/go.mod
           cache-dependency-path: panel/go.sum
 
+      # The panel needs cgo, and finding that out the hard way is the reason
+      # this step exists: it stores its database through gorm.io/driver/sqlite,
+      # which is mattn/go-sqlite3, which is a C library. Built with
+      # CGO_ENABLED=0 the driver still LINKS -- it compiles to a stub that
+      # fails at runtime with "go-sqlite3 requires cgo to work. This is a
+      # stub". So the binary installs perfectly and then cannot open its
+      # database, which is a far worse failure than not building at all.
+      - name: Cross-compiler for arm64
+        if: matrix.goarch == 'arm64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
       - name: Build the panel
         working-directory: panel
         env:
           GOOS: linux
           GOARCH: ${{ matrix.goarch }}
-          CGO_ENABLED: '0'
-        # Static, so one binary runs on any distro without matching libc.
-        # -s -w drops the symbol table and DWARF: no debugger runs against a
-        # production panel, and it takes a third off the download.
+          CGO_ENABLED: '1'
+          CC: ${{ matrix.goarch == 'arm64' && 'aarch64-linux-gnu-gcc' || 'gcc' }}
+        # -extldflags -static keeps the result self-contained despite cgo, so
+        # one binary still runs on any distro without matching the build host's
+        # libc. Without it, cgo would tie this to glibc's version and the
+        # binary would fail on anything older than the runner.
+        #
+        # -s -w drops the symbol table and DWARF: nobody attaches a debugger to
+        # a production panel, and it takes a third off the download.
         run: |
-          go build -trimpath -ldflags='-s -w' -o "../simorgh-panel-linux-${GOARCH}" .
+          go build -trimpath -ldflags='-s -w -extldflags "-static"' \
+            -o "../simorgh-panel-linux-${GOARCH}" .
 
+      # Prove the panel can actually open a database before publishing it.
+      #
+      # A cgo-less build fails only at RUNTIME, so a green build job published a
+      # binary that installed cleanly and then died on first start. `migrate`
+      # opens the database and exits, which is the cheapest thing that would
+      # have caught it. Only meaningful natively; the arm64 binary cannot run
+      # here.
+      - name: Check the panel can open its database
+        if: matrix.goarch == 'amd64'
+        run: |
+          sudo ./simorgh-panel-linux-amd64 migrate
+          echo "database opens - cgo is genuinely enabled"
+
+      # The core has no C dependencies at all (its go.mod requires nothing), so
+      # cgo would only tie it to a libc for no gain.
       - name: Build the tunnel core
         working-directory: core
         env:
