@@ -386,9 +386,85 @@ install_panel() {
     echo -e "  ${DIM}few minutes and needs to reach the Go module proxy.${NC}"
     echo
 
-    _sync_panel_source || { pause; return 1; }
+    # Try a prebuilt binary before making this machine compile anything.
+    #
+    # Building on the target server meant fetching a 66 MB Go toolchain, then
+    # ~120 modules, then a multi-minute compile -- on machines that are often
+    # small, over links where each of those is a separate thing that can fail,
+    # and every failure something the operator has to diagnose. GitHub has none
+    # of those constraints, so it builds and this downloads one file.
+    #
+    # Source build stays below as the fallback: architectures with no published
+    # binary, a fork with its own changes, or anyone who would simply rather
+    # compile what they run.
+    if _install_panel_binary; then
+        chmod +x "$PANEL_BIN"
+        echo -e "  ${G}Installed $PANEL_BIN${NC}"
+    else
+        echo -e "  ${DIM}No prebuilt binary available - building from source instead.${NC}"
+        _build_panel_from_source || { pause; return 1; }
+    fi
+    _panel_post_install
+    return
+}
 
-    local go_bin; go_bin="$(ensure_go)" || { pause; return 1; }
+# _install_panel_binary fetches a published build for this architecture.
+# Returns non-zero when there is nothing to fetch, so the caller falls back.
+_install_panel_binary() {
+    [ "${SIMORGH_BUILD_FROM_SOURCE:-0}" = "1" ] && return 1
+
+    local arch; case "$(uname -m)" in
+        x86_64)        arch=amd64 ;;
+        aarch64|arm64) arch=arm64 ;;
+        *) return 1 ;;  # nothing published for this one; compile it
+    esac
+
+    local slug=""
+    case "$REPO_URL" in
+        https://github.com/*) slug="${REPO_URL#https://github.com/}"; slug="${slug%.git}" ;;
+        *) return 1 ;;
+    esac
+
+    local tag="${SIMORGH_RELEASE:-latest}"
+    local base="https://github.com/$slug/releases/download/$tag"
+    local file="simorgh-panel-linux-$arch"
+    local tmp; tmp="$(mktemp -d)"
+
+    local sources="$base/$file"
+    if [ "${SIMORGH_NO_MIRRORS:-0}" != "1" ]; then
+        sources="$sources https://ghproxy.net/$base/$file https://ghfast.top/$base/$file"
+    fi
+
+    # The release's own checksums file, so a mirror can only fail the check and
+    # be skipped -- never hand over a different binary than GitHub published.
+    local want=""
+    want="$(curl -fsSL --max-time 60 "$base/checksums.txt" 2>/dev/null \
+        | grep " $file\$" | grep -o '^[a-f0-9]\{64\}' | head -1 || true)"
+
+    echo -e "  ${Y}Looking for a prebuilt panel ($arch)...${NC}"
+    local url
+    for url in $sources; do
+        curl -fL --progress-bar --max-time 900 -o "$tmp/$file" "$url" 2>&1 >/dev/null || continue
+        if [ -n "$want" ]; then
+            local have; have="$(sha256sum "$tmp/$file" | cut -d' ' -f1)"
+            if [ "$have" != "$want" ]; then
+                echo -e "  ${R}  checksum mismatch - skipping this source${NC}"
+                rm -f "$tmp/$file"; continue
+            fi
+        else
+            # No checksums file means no published release yet. Refuse rather
+            # than install an unverified binary as root.
+            rm -rf "$tmp"; return 1
+        fi
+        install -m 0755 "$tmp/$file" "$PANEL_BIN" && rm -rf "$tmp" && return 0
+    done
+    rm -rf "$tmp"; return 1
+}
+
+_build_panel_from_source() {
+    _sync_panel_source || return 1
+
+    local go_bin; go_bin="$(ensure_go)" || return 1
     echo -e "  ${G}Using $("$go_bin" env GOVERSION)${NC}"
 
     # GOPROXY, and why it is not the default.
@@ -425,7 +501,13 @@ install_panel() {
     fi
     chmod +x "$PANEL_BIN"
     echo -e "  ${G}Built $PANEL_BIN${NC}"
+    return 0
+}
 
+# _panel_post_install is everything after a binary exists, whichever way it got
+# there. Shared so the downloaded and the compiled path cannot drift into
+# configuring the panel differently.
+_panel_post_install() {
     echo -e "  ${Y}Installing the service...${NC}"
     if ! "$PANEL_BIN" --systemd; then
         echo -e "  ${R}[ERROR] Could not install the panel service.${NC}"
@@ -1028,7 +1110,7 @@ first_run() {
 # yet. Used to decide whether to offer the guided path before dropping someone
 # into an eleven-item menu.
 nothing_installed() {
-    [ ! -f "$CONF_FILE" ] && [ ! -x "$PANEL_BIN" ] && ! docker image inspect "$IMAGE_NAME" >/dev/null 2>&1
+    [ ! -f "$CONF_FILE" ] && [ ! -x "$PANEL_BIN" ] && ! docker image inspect "$IMG" >/dev/null 2>&1
 }
 
 # offer_guided runs once, on a machine with nothing on it.

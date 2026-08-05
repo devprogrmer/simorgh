@@ -1,0 +1,118 @@
+# Build binaries so that installing does not mean compiling.
+#
+# Before this, `install.sh` fetched a Go toolchain onto the target server and
+# built the panel there: ~66 MB of Go, then ~120 modules, then a multi-minute
+# compile — on machines that are often small, and on links where each of those
+# steps is a separate thing that can fail. Every one of those failures was
+# something the operator had to diagnose.
+#
+# GitHub has none of those constraints, so it builds instead and the server
+# downloads one file. Building from source stays in install.sh as the fallback
+# for architectures not published here and for anyone who would rather compile.
+
+name: release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goarch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          # Read from go.mod rather than pinned here, so the toolchain cannot
+          # drift from what the code actually requires.
+          go-version-file: panel/go.mod
+          cache-dependency-path: panel/go.sum
+
+      - name: Build the panel
+        working-directory: panel
+        env:
+          GOOS: linux
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
+        # Static, so one binary runs on any distro without matching libc.
+        # -s -w drops the symbol table and DWARF: no debugger runs against a
+        # production panel, and it takes a third off the download.
+        run: |
+          go build -trimpath -ldflags='-s -w' -o "../simorgh-panel-linux-${GOARCH}" .
+
+      - name: Build the tunnel core
+        working-directory: core
+        env:
+          GOOS: linux
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
+        run: |
+          go build -trimpath -ldflags='-s -w' -o "../simorgh-core-linux-${GOARCH}" .
+
+      - name: Checksums
+        run: |
+          sha256sum simorgh-panel-linux-${{ matrix.goarch }} \
+                    simorgh-core-linux-${{ matrix.goarch }} \
+            > checksums-${{ matrix.goarch }}.txt
+          cat checksums-${{ matrix.goarch }}.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.goarch }}
+          path: |
+            simorgh-panel-linux-${{ matrix.goarch }}
+            simorgh-core-linux-${{ matrix.goarch }}
+            checksums-${{ matrix.goarch }}.txt
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: dist
+
+      - run: |
+          cat dist/checksums-*.txt > dist/checksums.txt
+          rm -f dist/checksums-*.txt
+          ls -la dist
+
+      # A rolling "latest" from main, so a fresh clone can install a binary
+      # without waiting for someone to cut a tag. Marked prerelease because that
+      # is what it is: whatever is on main, not a reviewed release.
+      - name: Publish rolling latest
+        if: startsWith(github.ref, 'refs/tags/') == false
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest build from main
+          prerelease: true
+          # Moved on every push to main, so the tag always points at what these
+          # binaries were actually built from.
+          make_latest: false
+          files: dist/*
+          body: |
+            Built automatically from `main` (${{ github.sha }}).
+
+            These are the binaries `install.sh` downloads, so that installing
+            does not require a Go toolchain, module downloads or a compile on
+            the target server.
+
+            Verify against `checksums.txt` before running anything from here.
+
+      - name: Publish tagged release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
