@@ -1,11 +1,34 @@
 # Simorgh — Gaming Tunnel
 
+**English** · [فارسی](README.fa.md) · [中文](README.zh.md) · [Русский](README.ru.md)
+
 Simorgh is a self-hosted, low-latency tunnel purpose-built for routing game
 (and general VPN) traffic between a server in Iran and a server abroad —
 minimizing ping and recovering from packet loss without adding round-trip
 delay. Everything runs from a Docker image **you build yourself**. No
 tunnel image is ever pulled from any registry — `core/` is the full Go
 source, and `install.sh` runs `docker build` against it.
+
+## The panel
+
+`panel/` is a full management panel — 18 protocols (Xray/VMess/VLESS/Trojan,
+WireGuard, OpenVPN, L2TP, PPTP, IPsec/IKEv2, SSTP, OpenConnect, MTProto,
+AmneziaWG, GRE, SSH, RADIUS and more), subscriptions, and a reseller system
+with a traffic-balance ledger. Interface in 13 languages.
+
+On top of what it inherited from upstream, this fork adds:
+
+| | |
+|---|---|
+| **Multi-node** | One panel drives servers in other countries over mTLS. Adding one takes an IP and an SSH password; prerequisites install themselves, kernel modules included. See [docs/NODES.md](docs/NODES.md). |
+| **Multi-location subscriptions** | One inbound placed on three nodes gives the customer three configs to pick between, all on one quota. |
+| **One quota per customer** | 20 GB across every protocol they hold, not 20 GB each. |
+| **Device limits** | Caps how many devices may fetch a subscription. Read the scope note in [docs/RESELLERS-AND-DEVICES.md](docs/RESELLERS-AND-DEVICES.md) before selling against it. |
+| **Separate reseller panel** | Resellers log in at their own URL, so the admin panel's location is not something every seller knows. |
+| **The tunnel, from the panel** | `core/` runs as one more managed core beside Xray, with the same start/stop/logs. No Docker required. |
+
+**Setting up Iran → abroad?** [docs/SETUP-IRAN-RELAY.md](docs/SETUP-IRAN-RELAY.md)
+walks through it, including the two settings that most often go wrong.
 
 This repo also includes: protocol installers for **WireGuard** and
 **OpenVPN**, a small **multi-location web panel** (`nodepanel/`) for
