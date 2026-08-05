@@ -2315,6 +2315,24 @@
         }
       },
       async addClient(clients, dbInboundId, modal) {
+        // One customer across several inbounds goes to a different endpoint with
+        // a different body shape, and sending the single-inbound form to it is
+        // what produced "invalid character 'i' looking for beginning of value":
+        // addClientMulti binds JSON, submit() posts a form, so the server tried
+        // to parse "id=3&settings=..." as JSON and choked on the first byte.
+        const extra = (modal && modal.extraInboundIds) || [];
+        if (extra.length) {
+          const ids = [dbInboundId, ...extra].map(Number);
+          // Sent as ONE request rather than a loop, so the server can check
+          // ownership of every inbound before writing any. A loop that failed
+          // half way would leave a customer existing on some of their protocols
+          // and not others, holding a subscription that silently omits them.
+          await this.submitJson(`/panel/api/inbounds/addClientMulti`, {
+            inboundIds: ids,
+            client: JSON.parse(clients.toString()),
+          }, modal);
+          return;
+        }
         const data = {
           id: dbInboundId,
           settings: '{"clients": [' + clients.toString() + ']}',
@@ -2611,6 +2629,26 @@
           // which is why the balance refresh sits here rather than at each caller.
           await this.refreshResellerBalance();
         }
+      },
+      // Posts a JSON BODY, for the handlers that bind JSON rather than a form.
+      //
+      // submit() above posts form-encoded, which is what every older endpoint
+      // expects. Sending that to a ShouldBindJSON handler fails with "invalid
+      // character 'i'" -- the parser hitting the "i" of "id=" -- and the error
+      // says nothing about the real mismatch, so the two are kept apart here
+      // rather than guessed at per call site.
+      async submitJson(url, body, modal) {
+        // Reuses HttpUtil.postWithModal, which already handles the spinner, the
+        // toast and closing on success. Axios sends a plain object as a JSON
+        // body by default, so nothing here has to set a header -- only the
+        // BODY SHAPE differs from submit(), and duplicating the surrounding
+        // behaviour is how the two would drift.
+        const msg = await HttpUtil.postWithModal(url, body, modal);
+        if (msg && msg.success) {
+          await this.getDBInbounds();
+          await this.refreshResellerBalance();
+        }
+        return msg;
       },
       // Two buckets only: protocols carried by the Xray core, and everything
       // else. An earlier version split this four ways and painted the families
