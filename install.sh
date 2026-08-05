@@ -112,6 +112,105 @@ _install_self() {
 # after $0 has been copied to $INSTALL_DIR and the git checkout is gone.
 # If there's no local checkout at all (the quick-install one-liner just
 # downloaded install.sh by itself), clone the repo to fetch core/.
+# _fetch_repo puts a full checkout in $FETCHED_SRC, downloading it once per run.
+#
+# A tarball, not a git clone. Measured on this repo: 5.5 MB in 8.7s versus a
+# shallow clone taking 10.3s and leaving another 5.9 MB of .git behind. But the
+# size is the least of it —
+#
+#   - It is one plain HTTPS GET. Servers where the git protocol is slow, proxied
+#     or blocked outright can still fetch it, and that is common on exactly the
+#     hosts this project is for.
+#   - It needs no git installed at all.
+#   - Someone who ran the curl quick-install has already proved HTTPS to GitHub
+#     works. Making the next step depend on a different protocol is asking for a
+#     failure they have no way to interpret.
+#
+# git clone stays as a fallback, since a private fork set through SIMORGH_REPO
+# may have no codeload equivalent.
+#
+# Cached in a run-scoped variable so installing the core AND the panel downloads
+# once rather than twice, which is what the two separate clones used to do.
+FETCHED_SRC=""
+_fetch_repo() {
+    [ -n "$FETCHED_SRC" ] && [ -d "$FETCHED_SRC" ] && return 0
+
+    local tmp; tmp="$(mktemp -d)"
+
+    # Derive the codeload URL from the configured repo. Only works for GitHub;
+    # anything else drops through to git.
+    local slug="" tarball=""
+    case "$REPO_URL" in
+        https://github.com/*)
+            slug="${REPO_URL#https://github.com/}"; slug="${slug%.git}"
+            tarball="https://codeload.github.com/$slug/tar.gz/refs/heads/${SIMORGH_BRANCH:-main}"
+            ;;
+    esac
+
+    if [ -n "$tarball" ]; then
+        local branch="${SIMORGH_BRANCH:-main}"
+        local direct="https://codeload.github.com/$slug/tar.gz/refs/heads/$branch"
+        local archive="https://github.com/$slug/archive/refs/heads/$branch.tar.gz"
+
+        # GitHub first, then public mirrors.
+        #
+        # The mirrors are here because GitHub is intermittently unreachable from
+        # the networks this project is FOR -- measured on one such link, the same
+        # codeload URL served in 4s and then timed out entirely 20 minutes later.
+        # Falling back means an install that would simply have failed now works.
+        #
+        # They are a real trust decision, not a free win: a mirror is a third
+        # party serving code this script then builds and runs as root. So GitHub
+        # is always tried first, a mirror is only ever a fallback, and using one
+        # is announced rather than silent. SIMORGH_NO_MIRRORS=1 turns them off
+        # for anyone who would rather fail than fetch from a third party.
+        local sources="$direct"
+        if [ "${SIMORGH_NO_MIRRORS:-0}" != "1" ]; then
+            sources="$sources https://ghproxy.net/$archive https://ghfast.top/$archive https://gh.llkk.cc/$archive"
+        fi
+
+        local url first=1
+        for url in $sources; do
+            if [ $first -eq 1 ]; then
+                echo -e "  ${Y}Downloading source (~6 MB)...${NC}"
+                first=0
+            else
+                echo -e "  ${Y}Trying mirror: ${url%%/https*}${NC}"
+            fi
+            if curl -fL --progress-bar --max-time 600 -o "$tmp/src.tgz" "$url" 2>&1; then
+                # --strip-components=1 drops the "simorgh-main/" wrapper.
+                if tar -xzf "$tmp/src.tgz" -C "$tmp" --strip-components=1 2>>"$LOG_FILE" && [ -d "$tmp/core" ]; then
+                    rm -f "$tmp/src.tgz"
+                    case "$url" in
+                        "$direct") : ;;
+                        *) echo -e "  ${Y}Note: fetched via a mirror, not github.com directly.${NC}" ;;
+                    esac
+                    FETCHED_SRC="$tmp"
+                    return 0
+                fi
+                echo -e "  ${DIM}Downloaded but could not extract; trying the next source.${NC}"
+            fi
+            rm -f "$tmp/src.tgz"
+        done
+        echo -e "  ${DIM}No tarball source worked; falling back to git.${NC}"
+        rm -rf "$tmp"; tmp="$(mktemp -d)"
+    fi
+
+    if ! command -v git >/dev/null 2>&1; then
+        echo -e "  ${R}[ERROR] Could not download the source, and git is not installed to fall back on.${NC}"
+        rm -rf "$tmp"; return 1
+    fi
+    echo -e "  ${Y}Cloning $REPO_URL ...${NC}"
+    if ! timeout 1200 git clone --depth=1 --progress "$REPO_URL" "$tmp" 2>&1 | tee -a "$LOG_FILE"; then
+        echo -e "  ${R}[ERROR] Could not fetch $REPO_URL${NC}"
+        echo -e "  ${DIM}If GitHub is unreachable from this server, copy a checkout next to"
+        echo -e "  this script, or point SIMORGH_REPO at a mirror you can reach.${NC}"
+        rm -rf "$tmp"; return 1
+    fi
+    FETCHED_SRC="$tmp"
+    return 0
+}
+
 _sync_core_source() {
     mkdir -p "$DATA_DIR"
 
@@ -125,27 +224,19 @@ _sync_core_source() {
         return # already have a copy from a previous install/run
     fi
 
-    echo -e "  ${Y}No local core/ next to this script - fetching source from${NC}"
-    echo -e "  ${Y}$REPO_URL ...${NC}"
-    local tmp
-    tmp="$(mktemp -d)"
-    if ! git clone --depth=1 "$REPO_URL" "$tmp" >>"$LOG_FILE" 2>&1; then
-        echo -e "  ${R}[ERROR] Could not fetch $REPO_URL${NC}"
-        echo -e "  ${DIM}Set SIMORGH_REPO=<your fork's .git URL> and re-run, or run${NC}"
-        echo -e "  ${DIM}this script from inside a full checkout instead.${NC}"
-        rm -rf "$tmp"
+    echo -e "  ${Y}No local core/ next to this script.${NC}"
+    if ! _fetch_repo; then
         exit 1
     fi
+    local tmp="$FETCHED_SRC"
     if [ ! -d "$tmp/core" ]; then
-        echo -e "  ${R}[ERROR] Cloned $REPO_URL but it has no core/ directory.${NC}"
-        rm -rf "$tmp"
+        echo -e "  ${R}[ERROR] Fetched the source but it has no core/ directory.${NC}"
         exit 1
     fi
     rsync -a "$tmp/core/" "$CORE_DIR/" 2>>"$LOG_FILE" || cp -r "$tmp/core" "$DATA_DIR/"
     if [ -d "$tmp/protocols" ]; then
         rsync -a "$tmp/protocols/" "$PROTOCOLS_DIR/" 2>>"$LOG_FILE" || cp -r "$tmp/protocols" "$DATA_DIR/"
     fi
-    rm -rf "$tmp"
 }
 
 # Same idea as _sync_core_source but for protocols/ (WireGuard/OpenVPN/L2TP
@@ -174,14 +265,16 @@ _sync_panel_source() {
         return 0
     fi
 
-    echo -e "  ${Y}No local panel/ next to this script - fetching source...${NC}"
-    local tmp; tmp="$(mktemp -d)"
-    if ! git clone --depth=1 "$REPO_URL" "$tmp" >>"$LOG_FILE" 2>&1 || [ ! -d "$tmp/panel" ]; then
-        echo -e "  ${R}[ERROR] Could not fetch panel/ from $REPO_URL${NC}"
-        rm -rf "$tmp"; return 1
+    echo -e "  ${Y}No local panel/ next to this script.${NC}"
+    if ! _fetch_repo; then
+        return 1
+    fi
+    local tmp="$FETCHED_SRC"
+    if [ ! -d "$tmp/panel" ]; then
+        echo -e "  ${R}[ERROR] Fetched the source but it has no panel/ directory.${NC}"
+        return 1
     fi
     rsync -a "$tmp/panel/" "$PANEL_SRC_DIR/" 2>>"$LOG_FILE" || cp -r "$tmp/panel" "$DATA_DIR/"
-    rm -rf "$tmp"
 }
 
 # ---------------------------------------------------------------------------
@@ -860,9 +953,46 @@ first_run() {
 # ---------------------------------------------------------------------------
 # main menu
 # ---------------------------------------------------------------------------
+# nothing_installed reports a machine this script has not set anything up on
+# yet. Used to decide whether to offer the guided path before dropping someone
+# into an eleven-item menu.
+nothing_installed() {
+    [ ! -f "$CONF_FILE" ] && [ ! -x "$PANEL_BIN" ] && ! docker image inspect "$IMAGE_NAME" >/dev/null 2>&1
+}
+
+# offer_guided runs once, on a machine with nothing on it.
+#
+# Someone arriving here has just pasted a curl command and does not yet know
+# what a "core", an "inbound" or a "node" is in this project, so eleven numbered
+# options is not a menu -- it is a quiz. Asking what they want to DO and doing it
+# is the difference between the tool working and the tool being abandoned at the
+# first screen.
+#
+# It is an OFFER, not a redirect: answering no drops straight into the full menu,
+# and it never appears again once anything is installed, so it cannot become
+# something an experienced operator has to dismiss on every run.
+offer_guided() {
+    nothing_installed || return 0
+    banner
+    echo -e "  ${W}Nothing is set up on this machine yet.${NC}"
+    echo
+    echo -e "  ${DIM}The guided setup asks what this server is for and configures the rest."
+    echo -e "  Answer 'n' if you would rather pick from the full menu.${NC}"
+    echo
+    local ans; ans=$(ask "Run guided setup? (y/n)" "y")
+    case "$ans" in
+        [Nn]*) return 0 ;;
+        *) guided_setup ;;
+    esac
+}
+
 main_menu() {
+    offer_guided
     while true; do
         banner
+        echo -e "  ${DIM}────────── Start here ──────────${NC}"
+        echo "  g) Guided setup — asks what this server is for"
+        echo -e "  ${DIM}────────── Tunnel ──────────${NC}"
         echo "  1) Install Core (local Docker build)"
         echo "  2) Create Tunnel"
         echo "  3) Manage Tunnel"
