@@ -421,6 +421,54 @@
                         </a-tooltip>
                       </template>
                     </template>
+                    <!--
+                      Locations: which machines serve this inbound, and the
+                      control for changing that.
+
+                      Editable in place rather than buried in the inbound edit
+                      form, because "also serve this from Helsinki" is a
+                      one-click decision an operator makes while looking at the
+                      list, not something worth reopening a twelve-field form
+                      for.
+                    -->
+                    <template slot="locations" slot-scope="text, dbInbound">
+                      <a-popover trigger="click" placement="bottomLeft"
+                                 @visibleChange="v => v && loadPlacements(dbInbound.id)">
+                        <template slot="content">
+                          <div style="min-width:190px">
+                            <div style="font-size:12px;opacity:.65;margin-bottom:8px">
+                              {{ i18n "pages.inbounds.servedFrom" }}
+                            </div>
+                            <a-checkbox-group v-model="placementPick[dbInbound.id]"
+                                              style="display:flex;flex-direction:column;gap:6px">
+                              <a-checkbox v-for="n in allNodes" :key="n.id" :value="n.id">
+                                <span v-text="n.name"></span>
+                                <!-- An offline node keeps serving; say so rather
+                                     than implying its configs have stopped. -->
+                                <a-tag v-if="!n.isLocal && n.status !== 'online'"
+                                       color="orange" size="small"
+                                       style="margin-inline-start:6px"
+                                       v-text="n.status"></a-tag>
+                              </a-checkbox>
+                            </a-checkbox-group>
+                            <a-button type="primary" size="small" style="margin-top:10px;width:100%"
+                                      :loading="placementSaving"
+                                      @click="savePlacements(dbInbound.id)">
+                              {{ i18n "confirm" }}
+                            </a-button>
+                          </div>
+                        </template>
+                        <span style="cursor:pointer">
+                          <a-tag v-for="p in (placements[dbInbound.id] || [])" :key="p.id"
+                                 :color="p.enable ? 'green' : ''"
+                                 style="margin:1px" v-text="p.nodeName"></a-tag>
+                          <a-tag v-if="!(placements[dbInbound.id] || []).length" style="margin:1px">
+                            local
+                          </a-tag>
+                        </span>
+                      </a-popover>
+                    </template>
+
                     <template slot="clients" slot-scope="text, dbInbound">
                       <template v-if="clientCount[dbInbound.id]">
                         <a-tag :style="{ margin: '0' }" color="green">[[
@@ -1200,6 +1248,14 @@
     align: 'left',
     width: 50,
     scopedSlots: { customRender: 'clients' },
+  }, {
+    // Where this inbound is actually served from. Without it an operator has no
+    // way to see that one inbound is on three machines, which is the whole
+    // point of placing it on more than one.
+    title: '{{ i18n "menu.nodes" }}',
+    align: 'left',
+    width: 130,
+    scopedSlots: { customRender: 'locations' },
   }, {
     title: '{{ i18n "pages.inbounds.traffic" }}',
     align: 'center',

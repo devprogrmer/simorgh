@@ -81,6 +81,10 @@ func (a *InboundController) initRouter(g *gin.RouterGroup) {
 	g.POST("/clientIps/:email", read, ownsClient, a.getClientIps)
 	g.POST("/clearClientIps/:email", requirePerm(model.PermEditClient), ownsClient, a.clearClientIps)
 	g.POST("/addClient", requirePerm(model.PermCreateClient), a.addInboundClient)
+	// One customer across several inbounds in a single call. Same permission as
+	// creating one: it creates accounts, and the count does not change what is
+	// being authorised.
+	g.POST("/addClientMulti", requirePerm(model.PermCreateClient), a.addClientAcrossInbounds)
 	g.POST("/:id/copyClients", requirePerm(model.PermCreateClient), owns, a.copyInboundClients)
 	g.POST("/:id/delClient/:clientId", requirePerm(model.PermDeleteClient), owns, a.delInboundClient)
 	g.POST("/updateClient/:clientId", requirePerm(model.PermEditClient), a.updateInboundClient)
@@ -862,6 +866,38 @@ func (a *InboundController) clearClientIps(c *gin.Context) {
 }
 
 // addInboundClient adds a new client to an existing inbound.
+// addClientAcrossInbounds creates one customer on several inbounds at once,
+// sharing an email and subscription id so they hold one quota and one
+// subscription rather than several.
+func (a *InboundController) addClientAcrossInbounds(c *gin.Context) {
+	var req service.MultiInboundClientRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		jsonMsg(c, "Client", err)
+		return
+	}
+
+	// Ownership is checked for EVERY inbound before anything is written, for the
+	// same reason the single-client path checks it: the targets are body fields,
+	// so the route table cannot guard them and requireInboundOwner never sees
+	// them. Checking up front rather than per-iteration also means a request
+	// naming one inbound the caller does not own creates nothing at all, instead
+	// of half a customer.
+	for _, id := range req.InboundIds {
+		if !a.callerOwnsInbound(c, id) {
+			jsonMsg(c, I18nWeb(c, "pages.inbounds.notFound"), errNotOwned)
+			return
+		}
+	}
+
+	res, err := a.inboundService.CreateAcrossInbounds(req)
+	if err != nil {
+		jsonMsg(c, "Client", err)
+		return
+	}
+	a.xrayService.SetToNeedRestart()
+	jsonObj(c, res, nil)
+}
+
 func (a *InboundController) addInboundClient(c *gin.Context) {
 	data := &model.Inbound{}
 	err := c.ShouldBind(data)
