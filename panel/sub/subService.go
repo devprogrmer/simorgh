@@ -97,7 +97,12 @@ func (s *SubService) GetSubs(subId string, host string) ([]string, int64, xray.C
 				if ct.LastOnline > lastOnline {
 					lastOnline = ct.LastOnline
 				}
-				if link := s.getLink(inbound, client.Email); link != "" {
+				// One link per PLACEMENT, not per inbound. An inbound on three
+				// nodes gives the customer three configs to pick between, all
+				// billing against the one quota their account has. A
+				// single-location install has exactly one placement and so
+				// produces exactly the one link it always did.
+				for _, link := range s.linksForEveryLocation(inbound, client.Email) {
 					result = append(result, link)
 				}
 			}
