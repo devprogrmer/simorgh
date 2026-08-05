@@ -315,9 +315,54 @@ ensure_go() {
         *) echo -e "  ${R}Unsupported architecture $(uname -m)${NC}" >&2; return 1 ;;
     esac
     local tgz="/tmp/go-$GO_VERSION.tar.gz"
-    if ! curl -fsSL --retry 3 -o "$tgz" "https://go.dev/dl/go$GO_VERSION.linux-$arch.tar.gz" 2>>"$LOG_FILE"; then
-        echo -e "  ${R}Could not download Go. Install Go $GO_MIN+ yourself and re-run.${NC}" >&2
+    local file="go$GO_VERSION.linux-$arch.tar.gz"
+
+    # go.dev first, then mirrors -- and the mirrors are not optional politeness.
+    #
+    # go.dev/dl redirects the actual tarball to dl.google.com, which answers 404
+    # on a good number of the networks this project is for. Measured on one such
+    # link: a clean 404 for a file that plainly exists. Without a fallback the
+    # installer stops here and the operator is told "could not download Go" with
+    # no idea that the file is fine and the path is not.
+    #
+    # Whatever a mirror serves is verified against go.dev's own published SHA256
+    # below, so a mirror cannot substitute a different toolchain -- it can only
+    # fail the check and be skipped.
+    local sources="https://go.dev/dl/$file"
+    if [ "${SIMORGH_NO_MIRRORS:-0}" != "1" ]; then
+        sources="$sources https://mirrors.aliyun.com/golang/$file https://mirror.nju.edu.cn/golang/$file"
+    fi
+
+    # go.dev publishes checksums as JSON. Fetched separately and cheaply; if it
+    # is unreachable the download still proceeds, just unverified, and says so.
+    local want_sha=""
+    # -A12, not fewer: sha256 sits four fields after filename and the split
+    # leaves blank lines between them, so a narrow window silently finds
+    # nothing and the download goes unverified without anyone noticing.
+    want_sha="$(curl -fsSL --max-time 45 "https://go.dev/dl/?mode=json&include=all" 2>/dev/null \
+        | tr ',{}' '\n\n\n' | grep -A12 "\"$file\"" | grep -o '"sha256": *"[a-f0-9]*"' \
+        | head -1 | grep -o '[a-f0-9]\{64\}' || true)"
+
+    local url got=0
+    for url in $sources; do
+        echo -e "  ${DIM}  ${url}${NC}" >&2
+        curl -fL --progress-bar --max-time 900 -o "$tgz" "$url" 2>&1 >/dev/null || { rm -f "$tgz"; continue; }
+        if [ -n "$want_sha" ]; then
+            local have; have="$(sha256sum "$tgz" 2>/dev/null | cut -d' ' -f1)"
+            if [ "$have" != "$want_sha" ]; then
+                echo -e "  ${R}  checksum mismatch from this source - skipping it${NC}" >&2
+                rm -f "$tgz"; continue
+            fi
+        fi
+        got=1; break
+    done
+    if [ "$got" -ne 1 ]; then
+        echo -e "  ${R}Could not download Go from any source.${NC}" >&2
+        echo -e "  ${DIM}Install Go $GO_MIN+ yourself and re-run; the script will use it.${NC}" >&2
         return 1
+    fi
+    if [ -z "$want_sha" ]; then
+        echo -e "  ${Y}  Note: go.dev's checksum list was unreachable, so the download was not verified.${NC}" >&2
     fi
     rm -rf "$DATA_DIR/go"
     mkdir -p "$DATA_DIR/go"
@@ -346,10 +391,36 @@ install_panel() {
     local go_bin; go_bin="$(ensure_go)" || { pause; return 1; }
     echo -e "  ${G}Using $("$go_bin" env GOVERSION)${NC}"
 
+    # GOPROXY, and why it is not the default.
+    #
+    # proxy.golang.org answers module metadata itself but redirects the module
+    # ZIPS to storage.googleapis.com, which is blocked on a good number of the
+    # networks this project is for. The symptom is brutal: roughly 120 modules
+    # download fine and two fail with 403, so the build dies minutes in, on a
+    # dependency nobody has heard of, with nothing pointing at the real cause.
+    #
+    # "direct" makes the go tool fetch straight from each module's own origin
+    # (github.com and friends) instead. Slower when the proxy IS reachable, and
+    # worth it: a slow build that finishes beats a fast one that cannot.
+    #
+    # Overridable, because an operator with a working proxy or a corporate
+    # mirror should not be forced onto the slow path:
+    #   SIMORGH_GOPROXY="https://proxy.golang.org,direct" sudo ./install.sh
+    local goproxy="${SIMORGH_GOPROXY:-direct}"
+
     echo -e "  ${Y}Building the panel (this is the slow part)...${NC}"
-    if ! ( cd "$PANEL_SRC_DIR" && GOFLAGS=-mod=mod "$go_bin" build -o "$PANEL_BIN" . ) >>"$LOG_FILE" 2>&1; then
-        echo -e "  ${R}[ERROR] Panel build failed. Last lines of $LOG_FILE:${NC}"
-        tail -20 "$LOG_FILE" | sed 's/^/    /'
+    echo -e "  ${DIM}Fetching ~120 Go modules with GOPROXY=$goproxy, then compiling."
+    echo -e "  Several minutes is normal. Output is live below, so a stall is visible.${NC}"
+    echo
+    # Live output, not swallowed into the log. This build used to write only to
+    # $LOG_FILE, which made a slow module download indistinguishable from a hang
+    # -- the same failure the source fetch had, in the step that takes longest.
+    if ! ( cd "$PANEL_SRC_DIR" && GOFLAGS=-mod=mod GOPROXY="$goproxy" "$go_bin" build -v -o "$PANEL_BIN" . ) 2>&1 | tee -a "$LOG_FILE"; then
+        echo
+        echo -e "  ${R}[ERROR] Panel build failed.${NC}"
+        echo -e "  ${DIM}If it failed downloading modules, this server may not reach them."
+        echo -e "  Try a proxy that works from here:"
+        echo -e "    SIMORGH_GOPROXY=https://goproxy.io,direct sudo ./install.sh${NC}"
         pause; return 1
     fi
     chmod +x "$PANEL_BIN"
