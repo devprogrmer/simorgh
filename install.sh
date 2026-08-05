@@ -57,6 +57,34 @@ banner() {
 
 pause() { read -r -p "  Press Enter to continue..." _; }
 
+# _dl downloads $1 to $2, and is the only place in this script that fetches a
+# large file. Everything it does is a lesson from a real failure:
+#
+#   --http1.1   HTTP/2 multiplexing breaks on lossy or middlebox-inspected
+#               links, and curl reports it as
+#               "stream 1 was not closed cleanly: PROTOCOL_ERROR". Observed
+#               killing a 134 MB download at 15%. HTTP/1.1 has no streams to
+#               break and costs nothing for a single file.
+#
+#   -C -        Resume. Without it every one of those breaks restarted from
+#               zero, so on a link that fails every few minutes a large file
+#               can never finish no matter how many times it is retried.
+#
+#   --retry     Reconnect automatically. Combined with -C - each attempt picks
+#               up where the last stopped, so a bad link costs time rather
+#               than the whole download.
+#
+#   speed-limit Give up on a connection that has stalled below 1 KB/s for 60s
+#               rather than sitting on it until --max-time. A dead transfer
+#               should fail fast and let the next mirror be tried.
+_dl() {
+    local url="$1" out="$2"
+    curl -fL --http1.1 -C - \
+         --retry 5 --retry-delay 3 --retry-all-errors \
+         --speed-limit 1024 --speed-time 60 \
+         --progress-bar -o "$out" "$url" 2>&1 >/dev/null
+}
+
 # ---------------------------------------------------------------------------
 # dependency + core-image install
 # ---------------------------------------------------------------------------
@@ -177,7 +205,7 @@ _fetch_repo() {
             else
                 echo -e "  ${Y}Trying mirror: ${url%%/https*}${NC}"
             fi
-            if curl -fL --progress-bar --max-time 600 -o "$tmp/src.tgz" "$url" 2>&1; then
+            if _dl "$url" "$tmp/src.tgz"; then
                 # --strip-components=1 drops the "simorgh-main/" wrapper.
                 if tar -xzf "$tmp/src.tgz" -C "$tmp" --strip-components=1 2>>"$LOG_FILE" && [ -d "$tmp/core" ]; then
                     rm -f "$tmp/src.tgz"
@@ -346,7 +374,7 @@ ensure_go() {
     local url got=0
     for url in $sources; do
         echo -e "  ${DIM}  ${url}${NC}" >&2
-        curl -fL --progress-bar --max-time 900 -o "$tgz" "$url" 2>&1 >/dev/null || { rm -f "$tgz"; continue; }
+        _dl "$url" "$tgz" || { rm -f "$tgz"; continue; }
         if [ -n "$want_sha" ]; then
             local have; have="$(sha256sum "$tgz" 2>/dev/null | cut -d' ' -f1)"
             if [ "$have" != "$want_sha" ]; then
@@ -444,7 +472,7 @@ _install_panel_binary() {
     echo -e "  ${Y}Looking for a prebuilt panel ($arch)...${NC}"
     local url
     for url in $sources; do
-        curl -fL --progress-bar --max-time 900 -o "$tmp/$file" "$url" 2>&1 >/dev/null || continue
+        _dl "$url" "$tmp/$file" || { rm -f "$tmp/$file"; continue; }
         if [ -n "$want" ]; then
             local have; have="$(sha256sum "$tmp/$file" | cut -d' ' -f1)"
             if [ "$have" != "$want" ]; then
