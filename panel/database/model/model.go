@@ -384,6 +384,17 @@ type Client struct {
 	Auth       string `json:"auth,omitempty"`               // Auth password (Hysteria)
 	Email      string `json:"email"`                        // Client email identifier
 	LimitIP    int    `json:"limitIp"`                      // IP limit for this client
+
+	// LimitDevices caps how many DEVICES may fetch this account's subscription.
+	// 0 = no limit.
+	//
+	// Deliberately separate from LimitIP, which counts source ADDRESSES at
+	// connection time and cannot distinguish devices behind one NAT. This counts
+	// distinct client apps at subscription time, which is the only moment a device
+	// is identifiable at all. The two answer different questions and an operator
+	// may reasonably set both; see model.ClientDevice for the scope of this one.
+	LimitDevices int `json:"limitDevices" form:"limitDevices"`
+
 	TotalGB    int64  `json:"totalGB" form:"totalGB"`       // Total traffic limit in GB
 	ExpiryTime int64  `json:"expiryTime" form:"expiryTime"` // Expiration timestamp
 	Enable     bool   `json:"enable" form:"enable"`         // Whether the client is enabled

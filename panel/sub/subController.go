@@ -100,6 +100,13 @@ func (a *SUBController) initRouter(g *gin.RouterGroup) {
 
 // subs handles HTTP requests for subscription links, returning either HTML page or base64-encoded subscription data.
 func (a *SUBController) subs(c *gin.Context) {
+	// Gated before anything is generated: an account over its device limit must
+	// not have its configs assembled and then withheld, because the assembly is
+	// where the credentials get written into the response.
+	if !admitDevice(c) {
+		c.String(403, deviceLimitMessage)
+		return
+	}
 	subId := c.Param("subid")
 	scheme, host, hostWithPort, hostHeader := a.subService.ResolveRequest(c)
 	subs, lastOnline, traffic, err := a.subService.GetSubs(subId, host)
@@ -204,6 +211,10 @@ func (a *SUBController) subConfig(c *gin.Context) {
 
 // subJsons handles HTTP requests for JSON subscription configurations.
 func (a *SUBController) subJsons(c *gin.Context) {
+	if !admitDevice(c) {
+		c.String(403, deviceLimitMessage)
+		return
+	}
 	subId := c.Param("subid")
 	scheme, host, hostWithPort, _ := a.subService.ResolveRequest(c)
 	jsonSub, header, err := a.subJsonService.GetJson(subId, host)
@@ -221,6 +232,10 @@ func (a *SUBController) subJsons(c *gin.Context) {
 }
 
 func (a *SUBController) subClashs(c *gin.Context) {
+	if !admitDevice(c) {
+		c.String(403, deviceLimitMessage)
+		return
+	}
 	subId := c.Param("subid")
 	scheme, host, hostWithPort, _ := a.subService.ResolveRequest(c)
 	clashSub, header, err := a.subClashService.GetClash(subId, host)
