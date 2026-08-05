@@ -644,6 +644,9 @@ func (s *SettingService) SetResellerBasePath(p string) error {
 	return s.setString(resellerBasePathKey, p)
 }
 
+// Matches the AllSetting json tag and the defaultValueMap entry, which is what
+// makes the Settings form read and write this through the reflection-based
+// loader with no extra wiring.
 const resellerBasePathKey = "resellerBasePath"
 
 func (s *SettingService) GetTimeLocation() (*time.Location, error) {

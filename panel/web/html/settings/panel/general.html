@@ -49,6 +49,18 @@
                 <a-input type="text" v-model="allSetting.webBasePath"></a-input>
             </template>
         </a-setting-list-item>
+        <!--
+            Where resellers log in. Sits directly under the admin path because
+            the two are read together: the point is that they DIFFER.
+        -->
+        <a-setting-list-item paddings="small">
+            <template #title>{{ i18n "pages.settings.resellerUrlPath"}}</template>
+            <template #description>{{ i18n "pages.settings.resellerUrlPathDesc"}}</template>
+            <template #control>
+                <a-input type="text" v-model="allSetting.resellerBasePath"
+                         placeholder="/sell-a8f2/"></a-input>
+            </template>
+        </a-setting-list-item>
         <a-setting-list-item paddings="small">
             <template #title>{{ i18n "pages.settings.sessionMaxAge" }}</template>
             <template #description>{{ i18n "pages.settings.sessionMaxAgeDesc" }}</template>

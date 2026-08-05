@@ -493,6 +493,8 @@
 "privateKeyPathDesc" = "O caminho do arquivo de chave privada para o painel web. (começa com ‘/‘)"
 "panelUrlPath" = "Caminho URI"
 "panelUrlPathDesc" = "O caminho URI para o painel web. (começa com ‘/‘ e termina com ‘/‘)"
+"resellerUrlPath" = "Caminho do painel de revenda"
+"resellerUrlPathDesc" = "Onde os revendedores entram, separado do painel admin. Vazio = painel compartilhado. Não substitui permissões."
 "pageSize" = "Tamanho da Paginação"
 "pageSizeDesc" = "Definir o tamanho da página para a tabela de entradas. (0 = desativado)"
 "remarkModel" = "Modelo de Observação & Caractere de Separação"

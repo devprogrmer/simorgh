@@ -493,6 +493,8 @@
 "privateKeyPathDesc" = "填寫一個 '/' 開頭的絕對路徑"
 "panelUrlPath" = "面板 url 根路徑"
 "panelUrlPathDesc" = "必須以 '/' 開頭，以 '/' 結尾"
+"resellerUrlPath" = "經銷商面板路徑"
+"resellerUrlPathDesc" = "經銷商登入的位址，與管理面板分開。留空則共用一個面板。不能取代權限控制。"
 "pageSize" = "分頁大小"
 "pageSizeDesc" = "定義入站表的頁面大小。設定 0 表示禁用"
 "remarkModel" = "備註模型和分隔符"

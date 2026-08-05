@@ -493,6 +493,8 @@
 "privateKeyPathDesc" = "Complete con una ruta absoluta que comience con."
 "panelUrlPath" = "Ruta Raíz de la URL del Panel"
 "panelUrlPathDesc" = "Debe empezar con '/' y terminar con."
+"resellerUrlPath" = "Ruta del panel de revendedores"
+"resellerUrlPathDesc" = "Donde inician sesión los revendedores, separada del panel de administración. Vacío = un panel compartido. No sustituye a los permisos."
 "pageSize" = "Tamaño de paginación"
 "pageSizeDesc" = "Defina el tamaño de página para la tabla de entradas. Establezca 0 para desactivar"
 "remarkModel" = "Modelo de observación y carácter de separación"

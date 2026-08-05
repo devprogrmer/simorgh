@@ -493,6 +493,8 @@
 "privateKeyPathDesc" = "Path berkas kunci privat untuk panel web. (dimulai dengan ‘/‘)"
 "panelUrlPath" = "URI Path"
 "panelUrlPathDesc" = "URI path untuk panel web. (dimulai dengan ‘/‘ dan diakhiri dengan ‘/‘)"
+"resellerUrlPath" = "Jalur panel reseller"
+"resellerUrlPathDesc" = "Tempat reseller masuk, terpisah dari panel admin. Kosongkan untuk satu panel bersama. Bukan pengganti izin akses."
 "pageSize" = "Ukuran Halaman"
 "pageSizeDesc" = "Tentukan ukuran halaman untuk tabel masuk. (0 = nonaktif)"
 "remarkModel" = "Model Catatan & Karakter Pemisah"

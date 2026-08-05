@@ -493,6 +493,8 @@
 "privateKeyPathDesc" = "Điền vào đường dẫn đầy đủ (bắt đầu từ '/')"
 "panelUrlPath" = "Đường dẫn gốc URL bảng điều khiển"
 "panelUrlPathDesc" = "Phải bắt đầu và kết thúc bằng '/'"
+"resellerUrlPath" = "Đường dẫn bảng đại lý"
+"resellerUrlPathDesc" = "Nơi đại lý đăng nhập, tách khỏi bảng quản trị. Để trống dùng chung một bảng. Không thay thế cho phân quyền."
 "pageSize" = "Kích thước phân trang"
 "pageSizeDesc" = "Xác định kích thước trang cho bảng gửi đến. Đặt 0 để tắt"
 "remarkModel" = "Ghi chú mô hình và ký tự phân tách"

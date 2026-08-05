@@ -659,6 +659,8 @@
 "privateKeyPathDesc" = "The private key file path for the web panel. (begins with ‘/‘)"
 "panelUrlPath" = "URI Path"
 "panelUrlPathDesc" = "The URI path for the web panel. (begins with ‘/‘ and concludes with ‘/‘)"
+"resellerUrlPath" = "Reseller panel path"
+"resellerUrlPathDesc" = "Where resellers log in, separate from the admin panel. Leave empty for one shared panel. Not a replacement for permissions — it only keeps the admin panel's location off every seller's screen."
 "pageSize" = "Pagination Size"
 "pageSizeDesc" = "Define page size for inbounds table. (0 = disable)"
 "remarkModel" = "Remark Model & Separation Character"
