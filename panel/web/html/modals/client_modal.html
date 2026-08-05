@@ -19,6 +19,42 @@
             >Account is (Expired|Traffic Ended) And Disabled</a-tag
         >
     </template>
+    <!--
+      Which inbounds this customer gets configs from.
+
+      Only on CREATE. Editing an existing account through this list would mean
+      deciding what "unticking" does -- delete that protocol's config and the
+      traffic already billed against it? -- and silently deleting a live config
+      because someone unticked a box is not a thing a form should do. Removing
+      a protocol stays a deliberate act on that inbound.
+
+      They all share one email and one subscription id, so it is ONE account
+      with ONE quota, not several. That is the whole point.
+    -->
+    <a-form-item v-if="!isEdit && clientModal.pickInbounds">
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    <span>{{ i18n "pages.inbounds.alsoCreateOnDesc"}}</span>
+                </template>
+                <span>{{ i18n "pages.inbounds.alsoCreateOn"}} </span>
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-select mode="multiple" style="width:100%"
+                  :placeholder="'{{ i18n "pages.inbounds.alsoCreateOnPlaceholder" }}'"
+                  v-model="clientModal.extraInboundIds">
+            <a-select-option v-for="ib in clientModal.otherInbounds" :key="ib.id" :value="ib.id">
+                <span v-text="ib.remark || ib.tag"></span>
+                <span style="opacity:.55" v-text="' · ' + ib.protocol"></span>
+            </a-select-option>
+        </a-select>
+        <div v-if="clientModal.extraInboundIds.length" style="font-size:12px;opacity:.65;margin-top:6px">
+            <span v-text="(clientModal.extraInboundIds.length + 1)"></span>
+            {{ i18n "pages.inbounds.alsoCreateOnHint" }}
+        </div>
+    </a-form-item>
+
     {{template "form/client"}}
 </a-modal>
 <script>
@@ -36,7 +72,20 @@
         index: null,
         clientIps: null,
         delayedStart: false,
+
+        // Extra inbounds to put this same customer on. Empty is the ordinary
+        // single-inbound case, which goes down the original path untouched --
+        // the multi path is additive, so nothing about creating one client the
+        // way it always worked changes.
+        pickInbounds: false,
+        extraInboundIds: [],
+        otherInbounds: [],
+
         ok() {
+            if (!clientModal.isEdit && clientModal.extraInboundIds.length) {
+                clientModal.createAcrossInbounds();
+                return;
+            }
             if (clientModal.isEdit) {
                 ObjectUtil.execute(
                     clientModal.confirm,
@@ -52,6 +101,36 @@
                 );
             }
         },
+        // createAcrossInbounds posts once for the whole set, rather than looping
+        // client-side. The server generates a fresh credential per inbound and
+        // reports per-inbound outcomes, so a protocol that refuses something
+        // does not silently leave the customer half-created with no indication
+        // of which half.
+        async createAcrossInbounds() {
+            const c = clientModalApp.client;
+            const ids = [clientModal.dbInbound.id, ...clientModal.extraInboundIds];
+            clientModal.confirmLoading = true;
+            try {
+                const msg = await HttpUtil.post('/panel/api/inbounds/addClientMulti', {
+                    inboundIds: ids,
+                    client: c,
+                });
+                if (!msg.success) return;
+                const r = msg.obj || {};
+                const failed = Object.keys(r.errors || {});
+                if (failed.length) {
+                    // Named, not counted. "3 of 4 succeeded" leaves the operator
+                    // hunting for which one.
+                    failed.forEach(id => Vue.prototype.$message.error(
+                        `inbound ${id}: ${r.errors[id]}`, 8));
+                }
+                clientModal.visible = false;
+                if (typeof app !== 'undefined' && app.getDBInbounds) app.getDBInbounds();
+            } finally {
+                clientModal.confirmLoading = false;
+            }
+        },
+
         show({
             title = "",
             okText = '{{ i18n "sure" }}',
@@ -60,6 +139,14 @@
             confirm = () => {},
             isEdit = false,
         }) {
+            this.extraInboundIds = [];
+            // Only offer the picker when there is somewhere else to go. On a
+            // panel with one inbound the control would be an empty dropdown
+            // asking a question with no answers.
+            const all = (typeof app !== 'undefined' && app.dbInbounds) ? app.dbInbounds : [];
+            this.otherInbounds = all.filter(ib => ib.id !== (dbInbound && dbInbound.id) && ib.enable);
+            this.pickInbounds = !isEdit && this.otherInbounds.length > 0;
+
             this.visible = true;
             this.title = title;
             this.okText = okText;
