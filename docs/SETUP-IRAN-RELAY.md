@@ -92,6 +92,67 @@ So on the placement, set **Advertise** to the Iranian server's public address.
 With Advertise set, the subscription hands out the Iranian address while the
 panel keeps managing the daemon abroad.
 
+## A working example
+
+A real pair, from an install that came up. Iran is `85.133.208.47`, abroad is
+`188.132.174.208`.
+
+**`/etc/simorgh.conf` on the Iran server:**
+
+```ini
+MODE=forward
+OPERATING_MODE=client
+TRANSPORT=icmp
+REMOTE_IP=188.132.174.208
+PASSWORD=a-long-shared-secret
+FORWARD_PROTO=udp
+FORWARD_BIND=0.0.0.0
+LOCAL_PORT=51820
+MTU=1400
+FEC_ENABLE=true
+FEC_GROUP=8
+```
+
+**`/etc/simorgh.conf` on the foreign server:**
+
+```ini
+MODE=forward
+OPERATING_MODE=server
+TRANSPORT=icmp
+PASSWORD=a-long-shared-secret
+FORWARD_PROTO=udp
+TARGET_HOST=127.0.0.1
+TARGET_PORT=51820
+MTU=1400
+FEC_ENABLE=true
+FEC_GROUP=8
+```
+
+**What has to match, and what does not:**
+
+| | |
+|---|---|
+| `PASSWORD` | identical, byte for byte |
+| `TRANSPORT` | identical |
+| `FEC_ENABLE` / `FEC_GROUP` | identical |
+| `LOCAL_PORT` (Iran) vs `TARGET_PORT` (abroad) | **need not match** |
+
+That last row is worth reading twice. `LOCAL_PORT` is what your customers
+connect to; `TARGET_PORT` is where the real VPN daemon listens abroad. Running
+customers on 443 while WireGuard sits on 51820 is perfectly valid, and often
+better -- 443 draws less attention.
+
+**Then the customer's config points at Iran, not abroad:**
+
+```ini
+[Peer]
+Endpoint = 85.133.208.47:51820
+```
+
+**One tunnel carries one port.** `LOCAL_PORT` and `TARGET_PORT` are single
+values, so serving WireGuard on 51820 and OpenVPN on 1194 at the same time
+needs a second tunnel, not a longer list.
+
 ## 4. Check it
 
 1. From your own machine, connect a client using the subscription.

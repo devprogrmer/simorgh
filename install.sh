@@ -111,6 +111,64 @@ _pick_source() {
     return 1
 }
 
+# _self_update fetches a newer install.sh and re-executes it.
+#
+# Checked on every start rather than offered in a menu, because the people who
+# most need a fix are the ones who will never go looking for one. It is
+# deliberately quiet when there is nothing to do: a notice on every launch
+# trains operators to ignore it.
+#
+# Runs BEFORE anything else touches the system, so a bug fixed upstream is
+# fixed for this run too -- which is the whole point. That is also why it
+# re-executes rather than just downloading: an updated script that only takes
+# effect next time leaves the operator hitting the bug they just updated to
+# escape.
+#
+# SIMORGH_NO_UPDATE=1 turns it off, for anyone running a modified copy who
+# does not want it replaced underneath them.
+_self_update() {
+    [ "${SIMORGH_NO_UPDATE:-0}" = "1" ] && return 0
+    [ "${SIMORGH_UPDATED:-0}" = "1" ] && return 0   # already re-executed once
+    command -v curl >/dev/null 2>&1 || return 0
+
+    local self; self="$(realpath "$0" 2>/dev/null || true)"
+    [ -n "$self" ] && [ -f "$self" ] || return 0
+
+    local tmp; tmp="$(mktemp)"
+    # Short timeout: this is a convenience on the way to the real work, and a
+    # slow mirror must never hold the installer hostage before it has even
+    # started.
+    if ! curl -fsSL --max-time 20 "$RAW_SELF_URL" -o "$tmp" 2>/dev/null; then
+        rm -f "$tmp"; return 0
+    fi
+
+    # Sanity-check before trusting it. A truncated download or a captive-portal
+    # HTML page would otherwise replace a working script with garbage, which is
+    # a far worse outcome than skipping an update.
+    if ! head -1 "$tmp" | grep -q '^#!/usr/bin/env bash' || ! bash -n "$tmp" 2>/dev/null; then
+        rm -f "$tmp"; return 0
+    fi
+    if [ "$(stat -c%s "$tmp" 2>/dev/null || echo 0)" -lt 10000 ]; then
+        rm -f "$tmp"; return 0
+    fi
+
+    if cmp -s "$tmp" "$self"; then
+        rm -f "$tmp"; return 0   # already current, say nothing
+    fi
+
+    echo -e "  ${Y}Nosakhe-ye jadid peyda shod - update mikonam...${NC}"
+    cat "$tmp" > "$self" && chmod +x "$self"
+    cp -f "$self" "$INSTALL_DIR/$SCRIPT_NAME" 2>/dev/null && \
+        chmod +x "$INSTALL_DIR/$SCRIPT_NAME" 2>/dev/null
+    rm -f "$tmp"
+    echo -e "  ${G}Update shod. Dobare ejra mishe...${NC}"
+    sleep 1
+    # SIMORGH_UPDATED stops an endless loop if the new copy also thinks it is
+    # out of date -- which happens when the mirror is stale or the local file
+    # has local edits that keep cmp unequal forever.
+    SIMORGH_UPDATED=1 exec "$self" "$@"
+}
+
 # ---------------------------------------------------------------------------
 # dependency + core-image install
 # ---------------------------------------------------------------------------
@@ -1424,6 +1482,9 @@ fi
 # A fresh machine gets the "what do you want" question once. Afterwards the menu
 # opens directly, since by then the operator has made that decision and being
 # asked again on every run is noise.
+# Before anything else, so a bug fixed upstream is fixed for THIS run.
+_self_update "$@"
+
 if first_run; then
     guided_setup
 fi
