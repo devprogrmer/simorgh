@@ -864,7 +864,32 @@ load_conf() {
 # ---------------------------------------------------------------------------
 # create tunnel
 # ---------------------------------------------------------------------------
-ask() { local prompt="$1" def="${2:-}" ans; read -r -p "  $prompt${def:+ [$def]}: " ans; echo "${ans:-$def}"; }
+# ask reads one answer, stripped of anything that is not printable ASCII.
+#
+# The stripping is not cosmetic. A password pasted from a phone, a Windows
+# terminal or a chat app can carry a stray byte -- a CR, a zero-width space, a
+# smart quote -- that is INVISIBLE on screen and lands in the value anyway.
+# Observed in the field: a tunnel password stored as \xD8mohsen_1383 while the
+# operator saw "mohsen_1383", so the two ends never agreed and the handshake
+# failed with "timeout waiting for hello-ack" -- an error that points at the
+# network and says nothing about the password.
+#
+# Worse, it then resists repair: sed's `.` does not match an invalid byte, so
+# `s/^PASSWORD=.*/.../` stops at the bad byte and leaves the rest of the line
+# in place, which looks like the fix silently did nothing.
+#
+# So it is cleaned once, here, at the only point these values enter the script.
+ask() {
+    local prompt="$1" def="${2:-}" ans
+    read -r -p "  $prompt${def:+ [$def]}: " ans
+    # tr -cd keeps only printable ASCII; -d '\r' first for the common CRLF case.
+    ans="$(printf '%s' "$ans" | tr -d '\r' | tr -cd '\11\40-\176')"
+    # Leading/trailing spaces come from paste as often as from typing, and a
+    # password with a trailing space is the same class of invisible failure.
+    ans="${ans#"${ans%%[![:space:]]*}"}"
+    ans="${ans%"${ans##*[![:space:]]}"}"
+    echo "${ans:-$def}"
+}
 
 create_tunnel() {
     banner
