@@ -591,7 +591,10 @@ _install_panel_binary() {
             fi
         else
             # No checksums file means no published release yet. Refuse rather
-            # than install an unverified binary as root.
+            # than install an unverified binary as root -- and SAY so, because
+            # silently falling back to a source build looks like the download
+            # path is broken when it is simply not there yet.
+            echo -e "  ${DIM}No published release found for this repo yet.${NC}"
             rm -rf "$tmp"; return 1
         fi
         install -m 0755 "$tmp/$file" "$PANEL_BIN" && rm -rf "$tmp" && return 0
